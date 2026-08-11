@@ -1,0 +1,16 @@
+{
+    "red_team": {
+        "speed": 260,
+        "sprint_speed": 400,
+        "max_stamina": 110.0,
+        "spin": 1.2,
+        "strength": 1.5
+    },
+    "blue_team": {
+        "speed": 240,
+        "sprint_speed": 370,
+        "max_stamina": 120.0,
+        "spin": 0.8,
+        "strength": 1.8
+    }
+}
