@@ -45,22 +45,6 @@ python PocketXI.py
 | Power Shot | Space      | Enter       |
 | Pause      | Escape / P | Escape / P  |
 
-### Player 1
-
-Movement: W A S D
-Sprinting: LShift
-Shooting: Space
-
-### Player 2
-
-Movement: Arrow Keys
-Sprinting: RShift
-Shooting: Enter
-
-### Misc
-
-Pause/Resume: Escape/P
-
 ## License
 
 This project was designed for educational purposes. It only uses assets under MIT Open Source License or CC0 License
