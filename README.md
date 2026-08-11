@@ -1,3 +1,66 @@
-# PocketXI
+# Pocket XI
 
-This is a placeholder readme file
+A two-player local football game built with Python and Pygame, featuring encrypted user profiles, adaptive AI, and enjoyable physics.
+
+## Overview
+
+Pocket XI is a top-down arcade football game where two players compete on a single screen. The game incorporates user account management with data being encrypted and stored locally, an AI system that adapts to player patterns, and a full physics engine for ball and player interactions.
+
+## Features
+
+- **Local Multiplayer** - Two players on one keyboard (WASD vs Arrow keys)
+- **Encrypted User Profiles** - Salted SHA-256 hashing and Fernet symmetric encryption for stored game data
+- **Adaptive AI** - FSM-based AI with heatmap positioning, pattern analysis, and heuristic difficulty scaling
+- **Physics Engine** - Ball friction, Magnus effect curve, collision detection, and momentum-based kicking
+- **Power Shot System** - Charge-based mechanic with stamina cost and visual particle feedback
+- **Stamina Management** - Sprint decay, recharge delay, and exhaustion mechanics
+- **Animated Sprites** - Frame-based walking animations with stride and bob effects
+- **Sound Design** - Procedural crowd chants, impact sounds, and ambient effects
+- **Stats Tracking** - Goals, shots, and possession time saved per user profile
+
+## Requirements
+
+- Python 3.8+
+- Pygame
+- cryptography
+
+## Installation
+
+```bash
+pip install pygame cryptography
+```
+
+## Usage
+
+```bash
+python PocketXI.py
+```
+
+## Controls
+
+| Action     | Player 1   | Player 2    |
+| ---------- | ---------- | ----------- |
+| Move       | W A S D    | Arrow Keys  |
+| Sprint     | Left Shift | Right Shift |
+| Power Shot | Space      | Enter       |
+| Pause      | Escape / P | Escape / P  |
+
+### Player 1
+
+Movement: W A S D
+Sprinting: LShift
+Shooting: Space
+
+### Player 2
+
+Movement: Arrow Keys
+Sprinting: RShift
+Shooting: Enter
+
+### Misc
+
+Pause/Resume: Escape/P
+
+## License
+
+This project was designed for educational purposes. It only uses assets under MIT Open Source License or CC0 License
