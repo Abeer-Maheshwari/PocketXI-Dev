@@ -2,8 +2,9 @@ import pygame
 from src.launcher import GameLauncher
 from src.ui import MenuSystem
 from src.match import MatchController
+import asyncio
 
-if __name__ == "__main__":
+async def main():
     # Initialise backend
     launcher_backend = GameLauncher()
     # Initialise menu
@@ -31,3 +32,5 @@ if __name__ == "__main__":
             game = MatchController(launcher_backend=launcher_backend, menu_system=menu_system)
             game.runMatchLoop()
             # After runMatchLoop finishes (e.g. via EXIT_TO_MENU), it loops back to menu_system.processEvents()
+
+asyncio.run(main())

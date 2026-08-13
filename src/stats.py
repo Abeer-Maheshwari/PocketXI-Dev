@@ -46,7 +46,9 @@ class PatternAnalyser:
         
         self.PatternThreshold = 5 
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.history_file = os.path.join(base_path, "ai_history.json")
+        data_path = os.path.join(base_path, "data")
+        os.makedirs(data_path, exist_ok=True)
+        self.history_file = os.path.join(data_path, "ai_history.json")
         self.loadHistory()
 
     def loadHistory(self):

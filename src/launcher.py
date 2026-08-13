@@ -19,10 +19,11 @@ class GameLauncher:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(None, 40)
         
-        # Path configuration (relative to project root)
+        # Runtime data is stored separately from application code and assets.
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.auth_path = os.path.join(base_path, "auth.json")
-        self.userdata_path = os.path.join(base_path, "userdata.json")
+        data_path = os.path.join(base_path, "data")
+        self.auth_path = os.path.join(data_path, "auth.json")
+        self.userdata_path = os.path.join(data_path, "userdata.json")
         self._initialise_local_storage_files()
         self.base_difficulty_tier = 3
         self.high_contrast_active = False
@@ -40,10 +41,12 @@ class GameLauncher:
         self.temp_saved_profile = None
 
     def _initialise_local_storage_files(self):
-        # Verifies files and thier paths exist and generates empty files if missing.
-        if not os.path.exists(self.auth_path):
-            with open(self.auth_path, 'w') as f:
-                json.dump({}, f)
+        # Create the data directory and empty stores on a first run.
+        os.makedirs(os.path.dirname(self.auth_path), exist_ok=True)
+        for path in (self.auth_path, self.userdata_path):
+            if not os.path.exists(path):
+                with open(path, 'w', encoding='utf-8') as file:
+                    json.dump({}, file)
 
     @staticmethod
     def _load_json_dict(path):
@@ -53,9 +56,6 @@ class GameLauncher:
             return data if isinstance(data, dict) else {}
         except (OSError, json.JSONDecodeError):
             return {}
-        if not os.path.exists(self.userdata_path):
-            with open(self.userdata_path, 'w') as f:
-                json.dump({}, f)
     
     def validateCredentials(self, username, password):
         # Enforces length and alphanumeric conditions
