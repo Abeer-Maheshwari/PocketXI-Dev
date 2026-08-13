@@ -3,7 +3,7 @@ import json
 import pygame
 import hashlib
 import base64
-
+import asyncio
 from src.team import TeamLoader
 from src.ai import AIManager
 from src.animation import AnimationManager
@@ -305,7 +305,7 @@ class MatchController:
         
         if self.is_paused:
             self._drawPauseMenu()
-
+        
         pygame.display.flip()
 
     def _drawPauseMenu(self):
@@ -434,23 +434,24 @@ class MatchController:
         exit_surf = sub_font.render("Press 'ESC' to Save & Return to Main Menu", True, (255, 200, 200))
         self.screen.blit(exit_surf, exit_surf.get_rect(center=(self.screen_width // 2, self.screen_height - 70)))
 
-    def runMatchLoop(self):
+    async def runMatchLoop(self):
         self.initialiseGame()
         running = True
         
         while running:
-            # Update dt
-            self.dt = self.clock.tick(self.fps) / 1000.0 
-
+            self.dt = self.clock.tick(self.fps) / 1000.0
             signal = self.handleMainEvents()
+            
             if signal == "EXIT_TO_MENU":
-                # Save stats before leaving
                 self.saveStatsAndHistory()
                 running = False
                 continue
-
+                
             self.updateMatchState()
             self.renderScene()
+            
+            # Yield control back to browser / Pyodide event loop
+            await asyncio.sleep(0)
 
     def saveStatsAndHistory(self):
         # Dedicated method to save data without quitting

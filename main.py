@@ -1,36 +1,32 @@
+import asyncio
 import pygame
 from src.launcher import GameLauncher
 from src.ui import MenuSystem
 from src.match import MatchController
-import asyncio
 
 async def main():
-    # Initialise backend
     launcher_backend = GameLauncher()
-    # Initialise menu
     menu_system = MenuSystem(launcher_backend)
     
     while True:
-        # Reset launch signal
         should_launch_match = False
         
+        # Menu Loop
         while not should_launch_match:
             menu_system.clock.tick(60)
-            # Continuously monitor mouse and keyboard events
             signal = menu_system.processEvents()
             
-            # Intercept launch match state
             if signal == "LAUNCH_MATCH":
                 should_launch_match = True
                 break
                 
-            # Draw active menu screen
             menu_system.renderDisplay()
+            await asyncio.sleep(0)  # Yield execution to Pyodide/browser
             
         if should_launch_match:
-            # Pass backend and menu system instances to prevent reliance on global state lookup
             game = MatchController(launcher_backend=launcher_backend, menu_system=menu_system)
-            game.runMatchLoop()
-            # After runMatchLoop finishes (e.g. via EXIT_TO_MENU), it loops back to menu_system.processEvents()
+            await game.runMatchLoop()  # Await the asynchronous match loop
+            await asyncio.sleep(0)
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -36,6 +36,13 @@ pip install pygame cryptography
 python PocketXI.py
 ```
 
+## Hosting
+
+```bash
+pip install pygbag
+python -m pygbag main.py
+```
+
 ## Controls
 
 | Action     | Player 1   | Player 2    |

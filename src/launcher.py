@@ -2,9 +2,15 @@ import os
 import json
 import base64
 import hashlib
-import secrets
 import pygame
 from src.encryption import EncryptionEngine
+try:
+    import secrets
+    def get_secure_salt():
+        return secrets.token_hex(16)
+except ImportError:
+    def get_secure_salt():
+        return os.urandom(16).hex()
 
 class GameLauncher:
     # Gatekeeper that manages authentication, saving, and dashboards before passing execution to main game loop.
@@ -96,7 +102,7 @@ class GameLauncher:
             return False
             
         # Salting
-        salt = secrets.token_hex(16)
+        salt = get_secure_salt()
         salted_password = p_clean + salt
         password_hash = hashlib.sha256(salted_password.encode('utf-8')).hexdigest()
         
