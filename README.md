@@ -1,6 +1,6 @@
 # Pocket XI
 
-A two-player local football game built with Python and Pygame, featuring encrypted user profiles, adaptive AI, and enjoyable physics.
+A two-player local football game built in Python with Pygame, featuring encrypted user profiles, adaptive AI, and enjoyable physics.
 
 ## Overview
 
