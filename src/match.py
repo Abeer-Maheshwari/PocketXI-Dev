@@ -32,7 +32,7 @@ class MatchController:
         # game state variables
         self.p1_score = 0
         self.p2_score = 0
-        self.MAX_GOALS = 3
+        self.MAX_GOALS = 10
         self.is_game_over = False
         self.is_paused = False
         self.match_time_remaining = 300.0
@@ -66,7 +66,8 @@ class MatchController:
         self.ai_manager = AIManager(pitch_rect)
 
         self.asset_manager = AnimationManager("assets")
-        self.sound_manager = SoundManager("assets/audio")
+        volume = self.launcher_backend.master_volume if self.launcher_backend else 1.0
+        self.sound_manager = SoundManager("assets/audio", master_volume=volume)
         self.stats_tracker = StatsTracker()
 
         # Keep persisted profile data separate from the per-match p1/p2 statistics.
@@ -92,7 +93,8 @@ class MatchController:
         print("Game Initialised Successfully.")
 
     def handleMainEvents(self):
-        # Processes system-level events
+        # Processes system-level events. All pause state changes go through
+        # _set_pause_state so the simulation and mixer remain in sync.
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.terminateGame()
@@ -100,7 +102,7 @@ class MatchController:
             if (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
                     and self.is_paused and not self.is_game_over):
                 if self.rect_resume.collidepoint(event.pos):
-                    self.is_paused = False
+                    self._set_pause_state(False)
                 elif self.rect_exit_match.collidepoint(event.pos):
                     return "EXIT_TO_MENU"
             
@@ -112,8 +114,17 @@ class MatchController:
                         return "EXIT_TO_MENU"
                 else:
                     if event.key == pygame.K_ESCAPE or event.key == pygame.K_p:
-                        self.is_paused = not self.is_paused
+                        self._set_pause_state(not self.is_paused)
         return "KEEP_RUNNING"
+
+    def _set_pause_state(self, paused):
+        """Change pause state and keep audio aligned with the match state."""
+        if paused == self.is_paused:
+            return
+
+        self.is_paused = paused
+        if self.sound_manager:
+            self.sound_manager.set_paused(paused)
 
     def _hardResetMatch(self):
         # Full reset of the match state
@@ -121,7 +132,7 @@ class MatchController:
         self.p2_score = 0
         self.match_time_remaining = 300.0
         self.is_game_over = False
-        self.is_paused = False
+        self._set_pause_state(False)
         self._resetPositions()
         print("Match Reset Successful.")
 
@@ -240,11 +251,13 @@ class MatchController:
         self._checkGoalConditions()
     
     def _checkGoalConditions(self):
-        # Private method that checks if the ball has crossed the goal lines
+        # A goal requires two conditions: crossing a goal line and passing
+        # through the same goal mouth that boundary collision leaves open.
         goal_scored = False
+        in_goal_mouth = self.physics_engine.is_in_goal_mouth(self.ball)
 
         # Check Player 2 Scores (left goal)
-        if self.ball.pos.x < 50:
+        if in_goal_mouth and self.ball.pos.x < self.physics_engine.pitch_bounds.left:
             self.p2_score += 1
             goal_scored = True
             self.stats_tracker.log_goal("p2")
@@ -252,7 +265,7 @@ class MatchController:
             print("Goal for Player 2!")
 
         # Check Player 1 (right goal)
-        elif self.ball.pos.x > self.screen_width - 50:
+        elif in_goal_mouth and self.ball.pos.x > self.physics_engine.pitch_bounds.right:
             self.p1_score += 1
             goal_scored = True
             self.stats_tracker.log_goal("p1")
@@ -443,6 +456,8 @@ class MatchController:
             signal = self.handleMainEvents()
             
             if signal == "EXIT_TO_MENU":
+                # Do not leave a paused global mixer behind for the next match.
+                self.sound_manager.stop_all()
                 self.saveStatsAndHistory()
                 running = False
                 continue

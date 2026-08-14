@@ -48,6 +48,7 @@ class Player(GameObject):
 
         # Animation Math variables
         self.walk_timer = 0.0
+        self.last_footstep_index = None
         self.stride_speed = 15.0  
         self.stride_length = 12.0 
         self.stance_width = 14
@@ -160,8 +161,16 @@ class Player(GameObject):
                 new_state = "WALK_DOWN" if self.vel.y > 0 else "WALK_UP"
             
             self.walk_timer += dt * self.stride_speed
+            # Fire a footstep once per stride peak. The old draw-time check
+            # played for several consecutive frames around every peak.
+            footstep_index = math.floor((self.walk_timer - math.pi / 2) / math.pi)
+            if footstep_index != self.last_footstep_index:
+                self.last_footstep_index = footstep_index
+                volume = 0.3 if not self.is_sprinting else 0.5
+                self.sound_manager.play_sfx("walk", volume)
         else:
             self.walk_timer = 0.0
+            self.last_footstep_index = None
 
         # Transitions between States
         if new_state != self.anim_state:
@@ -221,13 +230,6 @@ class Player(GameObject):
         elif self.anim_state == "WALK_DOWN": self.current_angle = 270
         elif self.anim_state == "WALK_LEFT": self.current_angle = 180
         elif self.anim_state == "WALK_RIGHT": self.current_angle = 0
-
-        # Play sound when the sine wave is at maximum displacement
-        if self.anim_state != "IDLE":
-            if abs(math.sin(self.walk_timer)) > 0.98:
-                # Lower volume for walking vs sprinting
-                vol = 0.3 if not self.is_sprinting else 0.5
-                self.sound_manager.play_sfx("walk", vol)
 
         # Rotate images 
         body_rotated = pygame.transform.rotate(body_img, self.current_angle)

@@ -24,6 +24,7 @@ class GameLauncher:
         pygame.display.set_caption("Pocket XI - Login")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(None, 40)
+        self.master_volume = 0.8
         
         # Runtime data is stored separately from application code and assets.
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

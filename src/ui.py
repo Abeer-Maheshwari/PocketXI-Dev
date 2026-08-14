@@ -148,7 +148,7 @@ class MenuSystem:
         self.rect_auth_toggle = pygame.Rect(self.width // 2 + 10, 360, 200, 50)
 
         # Settings Sliders
-        self.vol_slider = Slider(self.width // 2 - 200, 280, 400, 15, 0.0, 1.0, 0.8, "Master Volume")
+        self.vol_slider = Slider(self.width // 2 - 200, 280, 400, 15, 0.0, 1.0, self.game_launcher.master_volume, "Master Volume")
         self.diff_slider = Slider(self.width // 2 - 200, 380, 400, 15, 1, 5, self.game_launcher.base_difficulty_tier, "AI Difficulty")
 
         self.hover_mode1 = False
@@ -305,6 +305,7 @@ class MenuSystem:
         
         # Update launcher state from slider
         self.game_launcher.base_difficulty_tier = int(self.diff_slider.val)
+        self.game_launcher.master_volume = round(self.vol_slider.val, 2)
 
         self._draw_back_button(high_contrast)
     

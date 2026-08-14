@@ -4,6 +4,11 @@ from src.launcher import GameLauncher
 from src.ui import MenuSystem
 from src.match import MatchController
 
+# Configure the mixer before either the launcher or menu calls pygame.init().
+# A larger buffer and the same 24 kHz stereo format as the web assets give SDL's
+# WebAudio backend enough headroom on slower browsers.
+pygame.mixer.pre_init(frequency=24000, size=-16, channels=2, buffer=2048)
+
 async def main():
     launcher_backend = GameLauncher()
     menu_system = MenuSystem(launcher_backend)

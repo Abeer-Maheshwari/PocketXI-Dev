@@ -3,7 +3,11 @@ import random
 import pygame
 
 class PhysicsEngine:
-    # Dedicated module for spatial validation and collision resolution
+    # The goal mouth is centered on the pitch and is deliberately narrower
+    # than the touchline. A ball must fit wholly inside this opening to score.
+    GOAL_HALF_HEIGHT = 60
+
+    # Dedicated module for spatial validation and collision resolution.
     def __init__(self, pitch_rect, sound_manager, stats_tracker, ai_manager, particle_system):
         self.pitch_bounds = pitch_rect
         self.sound_manager = sound_manager
@@ -12,13 +16,12 @@ class PhysicsEngine:
         self.particle_system = particle_system
     
     def resolveBoundaryCollision(self, entity):
-        # Prevents sprites from leaving the pitch
-
-        # Goal zone logic
-        mid_y = self.pitch_bounds.top + (self.pitch_bounds.height // 2) 
-        in_goal_y = (entity.pos.y > mid_y - 60 + entity.radius) and (entity.pos.y < mid_y + 60 - entity.radius)
+        """Keep entities in the pitch, except for balls travelling through a goal."""
         is_ball = hasattr(entity, 'friction')
-        can_score = in_goal_y and is_ball
+        can_score = is_ball and self.is_in_goal_mouth(entity)
+
+        # Players always bounce off side lines. Only a ball in the goal mouth
+        # may cross a side line, after which MatchController awards the goal.
         
         # x-axis Boundaries
         if entity.pos.x - entity.radius < self.pitch_bounds.left:
@@ -41,12 +44,22 @@ class PhysicsEngine:
             if is_ball:
                 entity.vel.y *= -1
                 self.sound_manager.play_impact()
-                
+
         elif entity.pos.y + entity.radius > self.pitch_bounds.bottom:
             entity.pos.y = self.pitch_bounds.bottom - entity.radius
             if is_ball:
                 entity.vel.y *= -1
                 self.sound_manager.play_impact()
+
+    def is_in_goal_mouth(self, ball):
+        """Return whether the entire ball fits inside the vertical goal opening.
+
+        This predicate is shared by boundary resolution and score detection so
+        an out-of-bounds ball can never be mistaken for a goal.
+        """
+        pitch_mid_y = self.pitch_bounds.centery
+        clearance = self.GOAL_HALF_HEIGHT - ball.radius
+        return abs(ball.pos.y - pitch_mid_y) < clearance
     
     def checkPvPCollision(self, player1, player2):
         # Resolves overlap between two players.
