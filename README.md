@@ -2,6 +2,10 @@
 
 A two-player local football game built in Python with Pygame, featuring encrypted user profiles, adaptive AI, and enjoyable physics.
 
+## Overview
+
+Pocket XI is a top-down arcade football game where two players compete on a single screen. The game incorporates user account management with data being encrypted and stored locally, an AI system that adapts to player patterns, and a full physics engine for ball and player interactions.
+
 ## Screenshots
 ### Login Screen
 ![Login](screenshots/login.png)
@@ -12,9 +16,6 @@ A two-player local football game built in Python with Pygame, featuring encrypte
 ### Gameplay & Match
 ![Gameplay](screenshots/gameplay.png)
 
-## Overview
-
-Pocket XI is a top-down arcade football game where two players compete on a single screen. The game incorporates user account management with data being encrypted and stored locally, an AI system that adapts to player patterns, and a full physics engine for ball and player interactions.
 
 ## Features
 
