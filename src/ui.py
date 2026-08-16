@@ -108,7 +108,7 @@ class Slider:
 
 class MenuSystem:
     # Manages UI rendering, security and access checking by utilising GameLauncher
-    def __init__(self, game_launcher):
+    def __init__(self, game_launcher, network_client=None):
         pygame.init()
         self.width = 1280
         self.height = 720
@@ -121,6 +121,7 @@ class MenuSystem:
         
         # backend 
         self.game_launcher = game_launcher
+        self.network_client = network_client
         
         # Global UI FSM Config
         self.current_state = "LOGIN_SCREEN"
@@ -129,6 +130,14 @@ class MenuSystem:
         self.active_field = "username"
         self.notification_text = ""
         self.notification_color = "white"
+
+        # Online Match
+        self.join_code_buffer = ""
+        self.lobby_status = "Not connected"
+        self.lobby_status_color = "white"
+        self.rect_host_room = pygame.Rect(self.width // 2 - 250, 220, 500, 60)
+        self.rect_join_box = pygame.Rect(self.width // 2 - 250, 320, 320, 60)
+        self.rect_join_btn = pygame.Rect(self.width // 2 + 80, 320, 170, 60)
         
         # Temporary runtime save dictionary
         self.temp_saved_profile = None
@@ -252,7 +261,7 @@ class MenuSystem:
 
         buttons = [
             (self.rect_mode_1, "QUICK MATCH", "SPACE", (30, 120, 70)),
-            (self.rect_mode_2, "PLAY WITH A FRIEND", "COMING SOON", (118, 91, 185)),
+            (self.rect_mode_2, "PLAY WITH A FRIEND", "ENTER", (118, 91, 185)),
             (self.rect_stats, "GAME STATS", "S", (42, 93, 170)),
             (self.rect_settings, "SETTINGS", "E", (112, 78, 170)),
             (self.rect_logout, "LOG OUT", "O", (155, 65, 70)),
@@ -288,6 +297,46 @@ class MenuSystem:
         shortcut_surface = self.font_sub.render(f"[{shortcut}]", True, (220, 230, 245))
         shortcut_rect = shortcut_surface.get_rect(center=(draw_rect.centerx, draw_rect.centery + 28))
         self.screen.blit(shortcut_surface, shortcut_rect)
+
+    def drawOnlineLobby(self):
+        """Renders the multiplayer room hosting and joining dashboard."""
+        self.screen.fill((15, 23, 42))
+        title_surf = self.font_title.render("Multiplayer Lobby", True, (147, 197, 253))
+        self.screen.blit(title_surf, title_surf.get_rect(center=(self.width // 2, 100)))
+
+        # Display Network Status
+        status_surf = self.font_body.render(self.lobby_status, True, self.lobby_status_color)
+        self.screen.blit(status_surf, status_surf.get_rect(center=(self.width // 2, 160)))
+
+        # Host Room Card
+        hover_host = self.rect_host_room.collidepoint(pygame.mouse.get_pos())
+        host_bg = (30, 58, 138) if hover_host else (30, 41, 59)
+        pygame.draw.rect(self.screen, host_bg, self.rect_host_room, border_radius=12)
+        pygame.draw.rect(self.screen, (96, 165, 250), self.rect_host_room, 2, border_radius=12)
+        
+        if self.network_client and self.network_client.room_code and self.network_client.player_role == "p1":
+            host_text = f"ROOM CODE: {self.network_client.room_code} (WAITING...)"
+        else:
+            host_text = "CREATE PRIVATE ROOM (HOST)"
+        h_surf = self.font_body.render(host_text, True, "white")
+        self.screen.blit(h_surf, h_surf.get_rect(center=self.rect_host_room.center))
+
+        # Join Room Box
+        pygame.draw.rect(self.screen, (20, 29, 45), self.rect_join_box, border_radius=12)
+        pygame.draw.rect(self.screen, (96, 165, 250), self.rect_join_box, 2, border_radius=12)
+        join_display = f"CODE: {self.join_code_buffer}|" if self.join_code_buffer else "ENTER 4-LETTER CODE"
+        j_surf = self.font_body.render(join_display, True, "white" if self.join_code_buffer else "gray")
+        self.screen.blit(j_surf, (self.rect_join_box.x + 20, self.rect_join_box.y + 18))
+
+        # Join Button
+        hover_join = self.rect_join_btn.collidepoint(pygame.mouse.get_pos())
+        join_btn_bg = (30, 120, 70) if hover_join else (22, 101, 52)
+        pygame.draw.rect(self.screen, join_btn_bg, self.rect_join_btn, border_radius=12)
+        pygame.draw.rect(self.screen, (74, 222, 128), self.rect_join_btn, 2, border_radius=12)
+        j_btn_surf = self.font_body.render("JOIN", True, "white")
+        self.screen.blit(j_btn_surf, j_btn_surf.get_rect(center=self.rect_join_btn.center))
+
+        self._draw_back_button()
 
     def drawSettingsMenu(self):
         high_contrast = self.game_launcher.high_contrast_active
@@ -387,7 +436,15 @@ class MenuSystem:
         self.notification_color = "white"
         self.current_state = "LOGIN_SCREEN"
     
-    def processEvents(self):
+    async def processEvents(self):
+        # Poll network inbox if in lobby
+        if self.network_client and self.current_state == "ONLINE_LOBBY":
+            if self.network_client.match_started:
+                return "LAUNCH_ONLINE_MATCH"
+            if self.network_client.error_message:
+                self.lobby_status = self.network_client.error_message
+                self.lobby_status_color = (255, 100, 100)
+
         # Orchestrates inputs across the keyboard and mouse pointer
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -422,12 +479,35 @@ class MenuSystem:
                 if self.current_state == "MAIN_HUB":
                     if self.rect_mode_1.collidepoint(mouse_pos):
                         return "LAUNCH_MATCH"
+                    elif self.rect_mode_2.collidepoint(mouse_pos):
+                        self.current_state = "ONLINE_LOBBY"
+                        self.lobby_status = "Connecting to Server..."
+                        self.lobby_status_color = (255, 200, 100)
+                        if self.network_client:
+                            connected = await self.network_client.connect()
+                            if connected:
+                                self.lobby_status = "Connected to Server. Ready to play."
+                                self.lobby_status_color = (100, 255, 100)
+                            else:
+                                self.lobby_status = self.network_client.error_message or "Connection failed"
+                                self.lobby_status_color = (255, 100, 100)
                     elif self.rect_stats.collidepoint(mouse_pos):
                         self.current_state = "STATS_DASHBOARD"
                     elif self.rect_settings.collidepoint(mouse_pos):
                         self.current_state = "SETTINGS_MENU"
                     elif self.rect_logout.collidepoint(mouse_pos):
                         self.executeLogoutAction()
+
+                elif self.current_state == "ONLINE_LOBBY":
+                    if self.rect_host_room.collidepoint(mouse_pos) and self.network_client:
+                        self.lobby_status = "Creating Room..."
+                        await self.network_client.create_room()
+                    elif self.rect_join_btn.collidepoint(mouse_pos) and self.network_client:
+                        if len(self.join_code_buffer) >= 4:
+                            self.lobby_status = f"Joining {self.join_code_buffer}..."
+                            await self.network_client.join_room(self.join_code_buffer)
+                    elif self.rect_back.collidepoint(mouse_pos):
+                        self.current_state = "MAIN_HUB"
                 
                 elif self.current_state in ["SETTINGS_MENU", "STATS_DASHBOARD"]:
                     if self.rect_back.collidepoint(mouse_pos):
@@ -457,6 +537,18 @@ class MenuSystem:
                                 self.username_buffer += event.unicode
                             else:
                                 self.password_buffer += event.unicode
+
+                elif self.current_state == "ONLINE_LOBBY":
+                    if event.key == pygame.K_BACKSPACE:
+                        self.join_code_buffer = self.join_code_buffer[:-1]
+                    elif event.key == pygame.K_ESCAPE:
+                        self.current_state = "MAIN_HUB"
+                    elif event.key == pygame.K_RETURN and len(self.join_code_buffer) >= 4 and self.network_client:
+                        self.lobby_status = f"Joining {self.join_code_buffer}..."
+                        await self.network_client.join_room(self.join_code_buffer)
+                    else:
+                        if event.unicode.isalnum() and len(self.join_code_buffer) < 4:
+                            self.join_code_buffer += event.unicode.upper()
                                 
                 elif self.current_state == "MAIN_HUB":
                     if event.key in [pygame.K_RETURN, pygame.K_SPACE]:
@@ -486,6 +578,8 @@ class MenuSystem:
             self.drawLoginScreen()
         elif self.current_state == "MAIN_HUB":
             self.drawMainHub()
+        elif self.current_state == "ONLINE_LOBBY":
+            self.drawOnlineLobby()
         elif self.current_state == "SETTINGS_MENU":
             self.drawSettingsMenu()
         elif self.current_state == "STATS_DASHBOARD":

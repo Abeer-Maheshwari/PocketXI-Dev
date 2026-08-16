@@ -7,19 +7,23 @@ A two-player local football game built in Python with Pygame, featuring encrypte
 Pocket XI is a top-down arcade football game where two players compete on a single screen. The game incorporates user account management with data being encrypted and stored locally, an AI system that adapts to player patterns, and a full physics engine for ball and player interactions.
 
 ## Screenshots
+
 ### Login Screen
+
 ![Login](screenshots/login.png)
 
 ### Main menu
+
 ![Main Menu](screenshots/menu.png)
 
 ### Gameplay & Match
-![Gameplay](screenshots/gameplay.png)
 
+![Gameplay](screenshots/gameplay.png)
 
 ## Features
 
 - **Local Multiplayer** - Two players on one keyboard (WASD vs Arrow keys)
+- Online Multiplayer - Two players on two different sessions/devices play against each other
 - **Encrypted User Profiles** - Salted SHA-256 hashing and Fernet symmetric encryption for stored game data
 - **Adaptive AI** - FSM-based AI with heatmap positioning, pattern analysis, and heuristic difficulty scaling
 - **Physics Engine** - Ball friction, Magnus effect curve, collision detection, and momentum-based kicking
@@ -64,6 +68,7 @@ python -m pygbag main.py
 | Pause      | Escape / P | Escape / P  |
 
 ## AI Usage
+
 AI was used mostly to add support for pygbag, along with some bug fixes and understanding of pygame itself.
 
 ## License

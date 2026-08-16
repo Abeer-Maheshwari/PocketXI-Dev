@@ -16,7 +16,7 @@ from src.encryption import EncryptionEngine
 
 class MatchController:
     # manages the game loop, state transitions, and assigns tasks to other engines / modules
-    def __init__(self, launcher_backend=None, menu_system=None):
+    def __init__(self, launcher_backend=None, menu_system=None, network_client=None, is_online=False):
         # core variables
         self.screen_width = 1280
         self.screen_height = 720
@@ -28,6 +28,8 @@ class MatchController:
         # launcher references
         self.launcher_backend = launcher_backend
         self.menu_system = menu_system
+        self.network_client = network_client
+        self.is_online = is_online
 
         # game state variables
         self.p1_score = 0
@@ -81,6 +83,10 @@ class MatchController:
         self.particle_system = ParticleSystem()
         self.physics_engine = PhysicsEngine(pygame.Rect(50, 50, self.screen_width - 100, self.screen_height - 100), self.sound_manager, self.stats_tracker, self.ai_manager, self.particle_system)
         self.sound_manager.play_sfx("whistle") # Kickoff whistle
+
+        # Online controls 
+        p1_controls = "WASD" if (not self.is_online or self.network_client.player_role == "p1") else "NETWORK"
+        p2_controls = "ARROWS" if (not self.is_online) else ("WASD" if self.network_client.player_role == "p2" else "NETWORK")
 
         self.player1 = Player(self.sound_manager, player_id="p1", start_pos=(400, 360), controls="WASD", stats=p1_stats)
         self.player2 = Player(self.sound_manager, player_id="p2", start_pos=(880, 360), controls="ARROWS", stats=p2_stats)
@@ -183,7 +189,7 @@ class MatchController:
         
         return modifiers
     
-    def updateMatchState(self):
+    async def updateMatchState(self):
         # Coordinates physics and movement updates while match is running
         if self.is_game_over or self.is_paused:
             return
@@ -197,58 +203,124 @@ class MatchController:
         # Play ambient sound
         self.sound_manager.update_ambient_chants()
 
-        # Check AFK Status for both players
-        self.player1.checkAFK()
-        self.player2.checkAFK()
+        # ONLINE vs OFFLINE
+        if self.is_online and self.network_client:
+            is_host = (self.network_client.player_role == "p1")
 
-        # Update Player 1
-        self.player1.handleInput()
-        if self.player1.is_afk:
-            # Calculate modifiers specifically for Player 1 AI
-            p1_modifiers = self.heuristicAdapt(self.p1_score, self.p2_score, self.match_time_remaining)
-            self.ai_manager.updateFSM(self.player1, self.player2, self.ball, self.p1_goal_pos, self.p2_goal_pos, p1_modifiers)
-        self.player1.updatePosition(self.dt)
-        
-        # Update Player 2
-        self.player2.handleInput()
-        if self.player2.is_afk:
-            # Calculate modifiers specifically for Player 2 AI
-            p2_modifiers = self.heuristicAdapt(self.p2_score, self.p1_score, self.match_time_remaining)
-            self.ai_manager.updateFSM(self.player2, self.player1, self.ball, self.p2_goal_pos, self.p1_goal_pos, p2_modifiers)
-        self.player2.updatePosition(self.dt)
+            # 1. Process incoming packets
+            for msg in self.network_client.pop_messages():
+                if msg.get("status") == "relay":
+                    payload = msg.get("payload", {})
+                    p_type = payload.get("type")
 
-        # Apply Curve before linear friction
-        if self.ball.vel.length() > 0:
-            self.ball.vel = self.physics_engine.calculateCurve(self.ball.vel, self.ball.active_spin, self.ball.target_offset)
+                    # Host receives inputs from Guest
+                    if is_host and p_type == "GUEST_INPUT":
+                        self.player2.vel = pygame.Vector2(payload["vel"][0], payload["vel"][1])
+                        self.player2.is_sprinting = payload.get("sprint", False)
+                        self.player2.is_charging = payload.get("charge", False)
+
+                    # Guest receives authoritative state from Host
+                    elif not is_host and p_type == "HOST_STATE":
+                        self.ball.pos = pygame.Vector2(payload["ball_pos"][0], payload["ball_pos"][1])
+                        self.ball.vel = pygame.Vector2(payload["ball_vel"][0], payload["ball_vel"][1])
+                        self.player1.pos = pygame.Vector2(payload["p1_pos"][0], payload["p1_pos"][1])
+                        self.player1.vel = pygame.Vector2(payload["p1_vel"][0], payload["p1_vel"][1])
+                        self.p1_score = payload["scores"][0]
+                        self.p2_score = payload["scores"][1]
+                        self.match_time_remaining = payload["time"]
+
+            # 2. Local input & transmission
+            if is_host:
+                self.player1.handleInput()
+                self.player1.updatePosition(self.dt)
+                self.player2.updatePosition(self.dt)
+                
+                # Apply physics & send snapshot to guest
+                if self.ball.vel.length() > 0:
+                    self.ball.vel = self.physics_engine.calculateCurve(self.ball.vel, self.ball.active_spin, self.ball.target_offset)
+                self.ball.applyPhysics(self.dt)
+
+                await self.network_client.send_relay({
+                    "type": "HOST_STATE",
+                    "ball_pos": [self.ball.pos.x, self.ball.pos.y],
+                    "ball_vel": [self.ball.vel.x, self.ball.vel.y],
+                    "p1_pos": [self.player1.pos.x, self.player1.pos.y],
+                    "p1_vel": [self.player1.vel.x, self.player1.vel.y],
+                    "scores": [self.p1_score, self.p2_score],
+                    "time": self.match_time_remaining
+                })
+            else:
+                self.player2.handleInput()
+                self.player2.updatePosition(self.dt)
+                self.player1.updatePosition(self.dt)
+
+                await self.network_client.send_relay({
+                    "type": "GUEST_INPUT",
+                    "vel": [self.player2.vel.x, self.player2.vel.y],
+                    "sprint": self.player2.is_sprinting,
+                    "charge": self.player2.is_charging
+                })
+
+        else:
+            # Check AFK Status for both players
+            self.player1.checkAFK()
+            self.player2.checkAFK()
+
+            # Update Player 1
+            self.player1.handleInput()
+            if self.player1.is_afk:
+                # Calculate modifiers specifically for Player 1 AI
+                p1_modifiers = self.heuristicAdapt(self.p1_score, self.p2_score, self.match_time_remaining)
+                self.ai_manager.updateFSM(self.player1, self.player2, self.ball, self.p1_goal_pos, self.p2_goal_pos, p1_modifiers)
+            self.player1.updatePosition(self.dt)
             
-        self.ball.applyPhysics(self.dt)
+            # Update Player 2
+            self.player2.handleInput()
+            if self.player2.is_afk:
+                # Calculate modifiers specifically for Player 2 AI
+                p2_modifiers = self.heuristicAdapt(self.p2_score, self.p1_score, self.match_time_remaining)
+                self.ai_manager.updateFSM(self.player2, self.player1, self.ball, self.p2_goal_pos, self.p1_goal_pos, p2_modifiers)
+            self.player2.updatePosition(self.dt)
 
-        # Possession Update based on proximity and last touch
-        if self.ball.last_touched_by:
-            # Match the ID to the player object
-            active_player = self.player1 if self.ball.last_touched_by == "p1" else self.player2
-            
-            # Maximum radius to be considered in possession
-            possession_radius = 80.0 
-            
-            # Calculate distance between player and ball
-            distance = (active_player.pos - self.ball.pos).length()
-            
-            # Only log time if they are within the radius
-            if distance <= possession_radius:
-                self.stats_tracker.log_possession(active_player.player_id, self.dt)
+            # Apply Curve before linear friction
+            if self.ball.vel.length() > 0:
+                self.ball.vel = self.physics_engine.calculateCurve(self.ball.vel, self.ball.active_spin, self.ball.target_offset)
+                
+            self.ball.applyPhysics(self.dt)
 
-        # Resolve Collisions
-        self.physics_engine.resolveBoundaryCollision(self.player1)
-        self.physics_engine.resolveBoundaryCollision(self.player2)
-        self.physics_engine.resolveBoundaryCollision(self.ball)
-        
-        self.physics_engine.checkPvPCollision(self.player1, self.player2)
-        self.physics_engine.checkPvBCollision(self.player1, self.ball)
-        self.physics_engine.checkPvBCollision(self.player2, self.ball)
+            # Possession Update based on proximity and last touch
+            if self.ball.last_touched_by:
+                # Match the ID to the player object
+                active_player = self.player1 if self.ball.last_touched_by == "p1" else self.player2
+                
+                # Maximum radius to be considered in possession
+                possession_radius = 80.0 
+                
+                # Calculate distance between player and ball
+                distance = (active_player.pos - self.ball.pos).length()
+                
+                # Only log time if they are within the radius
+                if distance <= possession_radius:
+                    self.stats_tracker.log_possession(active_player.player_id, self.dt)
 
-        # WinCondition Check 
-        self._checkGoalConditions()
+            # Resolve Collisions
+            self.physics_engine.resolveBoundaryCollision(self.player1)
+            self.physics_engine.resolveBoundaryCollision(self.player2)
+            self.physics_engine.resolveBoundaryCollision(self.ball)
+            
+            self.physics_engine.checkPvPCollision(self.player1, self.player2)
+            self.physics_engine.checkPvBCollision(self.player1, self.ball)
+            self.physics_engine.checkPvBCollision(self.player2, self.ball)
+
+            # WinCondition Check 
+            if not self.is_online or (self.network_client and self.network_client.player_role == "p1"):
+                self.physics_engine.resolveBoundaryCollision(self.player1)
+                self.physics_engine.resolveBoundaryCollision(self.player2)
+                self.physics_engine.resolveBoundaryCollision(self.ball)
+                self.physics_engine.checkPvPCollision(self.player1, self.player2)
+                self.physics_engine.checkPvBCollision(self.player1, self.ball)
+                self.physics_engine.checkPvBCollision(self.player2, self.ball)
+                self._checkGoalConditions()
     
     def _checkGoalConditions(self):
         # A goal requires two conditions: crossing a goal line and passing
@@ -459,10 +531,12 @@ class MatchController:
                 # Do not leave a paused global mixer behind for the next match.
                 self.sound_manager.stop_all()
                 self.saveStatsAndHistory()
+                if self.is_online and self.network_client:
+                    await self.network_client.disconnect()
                 running = False
                 continue
                 
-            self.updateMatchState()
+            await self.updateMatchState()
             self.renderScene()
             
             # Yield control back to browser / Pyodide event loop
