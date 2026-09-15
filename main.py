@@ -12,7 +12,7 @@ pygame.mixer.pre_init(frequency=24000, size=-16, channels=2, buffer=2048)
 
 async def main():
     launcher_backend = GameLauncher()
-    network_client = NetworkClient("ws://152.67.155.250:8765")
+    network_client = NetworkClient("https://shared-collections-serial-apartments.trycloudflare.com")
     menu_system = MenuSystem(launcher_backend, network_client=network_client)   
     
     while True:
