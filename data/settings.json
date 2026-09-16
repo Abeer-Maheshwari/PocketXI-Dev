@@ -1,7 +1,7 @@
 {
     "master_volume": 0.5,
     "base_difficulty_tier": 4,
-    "p1_is_ai": true,
-    "p2_is_ai": true,
+    "p1_is_ai": false,
+    "p2_is_ai": false,
     "high_contrast_active": false
 }
