@@ -18,9 +18,7 @@ class SoundManager:
     def __init__(self, audio_path="assets/audio", master_volume=1.0):
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.is_web = sys.platform == "emscripten"
-        # Pygbag's SDL/WebAudio path is most reliable with 24 kHz OGGs. Keep
-        # the original higher-quality files for desktop, while retaining the
-        # broadly supported Vorbis codec in the web copies.
+        # Pygbag's SDL/WebAudio path is most reliable with 24 kHz OGGs.
         if self.is_web:
             audio_path = os.path.join(audio_path, "web")
         self.path = os.path.join(base_path, audio_path)
@@ -34,8 +32,7 @@ class SoundManager:
         self.crowd_channel = None
         self.master_volume = master_volume
 
-        # ``pre_init`` in main.py handles the normal path. This fallback keeps
-        # SoundManager safe when a match is started directly during development.
+        # This fallback keeps SoundManager safe when a match is started directly during development.
         if not pygame.mixer.get_init():
             try:
                 pygame.mixer.init(*self.WEB_AUDIO_FORMAT)
@@ -45,8 +42,7 @@ class SoundManager:
         if not pygame.mixer.get_init():
             return
 
-        # Reserve one channel for the long-running crowd track. Short effects
-        # use the remaining channels and cannot interrupt it.
+        # Reserve one channel for the long-running crowd track. Short effects use the remaining channels and cannot interrupt it.
         pygame.mixer.set_num_channels(8)
         pygame.mixer.set_reserved(1)
         self.crowd_channel = pygame.mixer.Channel(0)
@@ -77,8 +73,7 @@ class SoundManager:
             print(f"Warning: Could not load audio files ({error}).")
 
     def update_ambient_chants(self):
-        # Do not start a new chant while the match is paused. Existing audio is
-        # paused separately by set_paused(), preserving its playback position.
+        # Existing audio is paused separately by set_paused(), preserving its playback position.
         if (self.audio_enabled and not self.is_paused and self.crowd_channel
                 and not self.crowd_channel.get_busy() and self.chants):
             next_chant = random.choice(self.chants)
