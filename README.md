@@ -16,6 +16,14 @@ Pocket XI is a top-down arcade football game where two players compete on a sing
 
 ![Main Menu](screenshots/menu.png)
 
+### Career History
+
+![Career History](screenshots/career.png)
+
+### Multiplayer
+
+![Multiplayer](screenshots/multiplayer.png)
+
 ### Gameplay & Match
 
 ![Gameplay](screenshots/gameplay.png)
@@ -23,7 +31,7 @@ Pocket XI is a top-down arcade football game where two players compete on a sing
 ## Features
 
 - **Local Multiplayer** - Two players on one keyboard (WASD vs Arrow keys)
-- Online Multiplayer - Two players on two different sessions/devices play against each other
+- **Online Multiplayer** - Two players on two different sessions/devices play against each other
 - **Encrypted User Profiles** - Salted SHA-256 hashing and Fernet symmetric encryption for stored game data
 - **Adaptive AI** - FSM-based AI with heatmap positioning, pattern analysis, and heuristic difficulty scaling
 - **Physics Engine** - Ball friction, Magnus effect curve, collision detection, and momentum-based kicking
@@ -32,6 +40,7 @@ Pocket XI is a top-down arcade football game where two players compete on a sing
 - **Animated Sprites** - Frame-based walking animations with stride and bob effects
 - **Sound Design** - Procedural crowd chants, impact sounds, and ambient effects
 - **Stats Tracking** - Goals, shots, and possession time saved per user profile
+- **Transitions Between Screens** - Fade in/out transitions and loading menus
 
 ## Requirements
 
@@ -51,7 +60,7 @@ pip install pygame cryptography
 python PocketXI.py
 ```
 
-## Hosting
+## Web Player
 
 ```bash
 pip install pygbag
