@@ -2,19 +2,20 @@ import math
 import random
 import pygame
 
+
 class GameObject:
-    # Base parent class for all entities ingame that instantiates common attributes
+    # Base entity with position and velocity
     def __init__(self, start_pos):
         self.pos = pygame.Vector2(start_pos)
         self.vel = pygame.Vector2(0, 0)
 
 
 class Player(GameObject):
-    # Child class that adds input/animation logic and inherits some attributes from the GameObject class
+    # Player entity with movement, stamina, animations, and input handling
     def __init__(self, sound_manager, player_id, start_pos, controls, stats):
-        super().__init__(start_pos) # Initialise the parent constructor
+        super().__init__(start_pos)
 
-        # Identity variables
+        # Player stats & settings
         self.player_id = player_id
         self.controls = controls
         self.sound_manager = sound_manager
@@ -25,35 +26,34 @@ class Player(GameObject):
         self.spin = stats.get("spin", 1.0)
         self.strength = stats.get("strength", 1.0)
 
-        # Stamina variables
+        # Stamina system
         self.max_stamina = stats.get("max_stamina", 100.0)
         self.stamina = self.max_stamina
-        self.sprint_decay_rate = 25.0       # Depletes in 4s
-        self.stamina_recharge_rate = 15.0   # Recharges in ~6.6s
-        self.stamina_recharge_delay = 2.0   # Delay of 2s before recharging
+        self.sprint_decay_rate = 25.0
+        self.stamina_recharge_rate = 15.0
+        self.stamina_recharge_delay = 2.0
         self.recharge_timer = 0.0
         self.is_sprinting = False
 
-        # PowerShot Variables
+        # Power shot charging
         self.power_charge_level = 0.0
-        self.MAX_CHARGE = 1.5  # Seconds to reach max power
+        self.MAX_CHARGE = 1.5
         self.is_charging = False
 
-        # Animation state variables
+        # Animation state
         self.anim_state = "IDLE"
         self.sfc = 0
         self.eta = 0.0
         self.frame_rate = 0.15
         self.current_angle = 0
 
-        # Animation Math variables
+        # Walking animation & footstep audio timing
         self.walk_timer = 0.0
         self.last_footstep_index = None
         self.stride_speed = 15.0  
         self.stride_length = 12.0 
         self.stance_width = 14
 
-        # We define the number of frames each state should display for
         self.frames_per_state = {
             "IDLE": 1,
             "WALK_UP": 4,
@@ -62,20 +62,19 @@ class Player(GameObject):
             "WALK_RIGHT": 4
         }
 
-        # AFK + Input Buffer Variables
-        self.input_buffer = []           # An Array that will use Queue logic to hold timestamps
-        self.max_buffer_size = 10        # Memory constraint
+        # Input buffer and AFK bot takeover
+        self.input_buffer = []
+        self.max_buffer_size = 10
         self.is_afk = False
         self.afk_threshold = 3.0
         self.last_input_time = pygame.time.get_ticks() / 1000.0
 
     def handleInput(self):
-        # Reads keyboard interrupts and modifies velocity vector and encapsulates the player controls
-
+        # Poll keyboard input based on player control scheme
         keys = pygame.key.get_pressed()
-        self.vel.update(0, 0) # Resets velocity each frame so that it is not accelerated by mistake
-        self.is_sprinting = False # Reset sprint state every frame
-        self.is_charging = False # Reset charge state
+        self.vel.update(0, 0)
+        self.is_sprinting = False
+        self.is_charging = False
 
         if self.controls == "WASD":
             if keys[pygame.K_w]: self.vel.y = -1
@@ -91,68 +90,61 @@ class Player(GameObject):
             if keys[pygame.K_RIGHT]: self.vel.x = 1
             if keys[pygame.K_RSHIFT]: self.is_sprinting = True
             if keys[pygame.K_RETURN]: self.is_charging = True
+        elif self.controls == "BOTH":
+            if keys[pygame.K_w] or keys[pygame.K_UP]: self.vel.y = -1
+            if keys[pygame.K_s] or keys[pygame.K_DOWN]: self.vel.y = 1
+            if keys[pygame.K_a] or keys[pygame.K_LEFT]: self.vel.x = -1
+            if keys[pygame.K_d] or keys[pygame.K_RIGHT]: self.vel.x = 1
+            if keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]: self.is_sprinting = True
+            if keys[pygame.K_SPACE] or keys[pygame.K_RETURN]: self.is_charging = True
 
-        # Update Input Buffer + State 
+        # Track input activity for AFK detection
         current_time = pygame.time.get_ticks() / 1000.0
         input_detected = (self.vel.length() > 0) or self.is_sprinting or self.is_charging
 
         if input_detected:
             self.last_input_time = current_time
             self.input_buffer.append(current_time)
-            
-            # Capacity Limit
             if len(self.input_buffer) > self.max_buffer_size:
-                self.input_buffer.pop(0) # Dequeue oldest input
-            
+                self.input_buffer.pop(0)
             self.is_afk = False
         
-        # Makes sure that players don't move faster if 2 keys are pressed at the same time.
+        # Normalize diagonal movement speed
         if self.vel.length() > 0:
             self.vel = self.vel.normalize()
         else:
-            self.is_sprinting = False # no sprinting when standing still
+            self.is_sprinting = False
 
     def checkAFK(self):
-        # Determines if control should be given to AI
+        # Trigger bot takeover if player has been idle for too long
         current_time = pygame.time.get_ticks() / 1000.0
-        
-        # Get data from the Queue
-        if len(self.input_buffer) > 0:
-            most_recent_input = self.input_buffer[-1]
-        else:
-            most_recent_input = self.last_input_time # Fallback to game start
-            
-            # Calculate Idle Delta
+        most_recent_input = self.input_buffer[-1] if len(self.input_buffer) > 0 else self.last_input_time
         idle_delta = current_time - most_recent_input
         
-        # Ensure the threshold is met
         if idle_delta > self.afk_threshold:
             if not self.is_afk:
-                print(f"DEBUG: Player {self.player_id} is AFK. Bot taking over.")
+                print(f"Player {self.player_id} is idle - AI taking over.")
             self.is_afk = True
 
     def updatePosition(self, dt):
-        # Updates player coordinates and decides which animation state/frame should be active
-
-        # Update Stamina
+        # Update stamina, charge, position, and walking animation
         self.updateStamina(dt)
 
-        # PowerShot Charging
-        if self.is_charging and self.stamina > 5.0: # minimum stamina
+        # Handle power shot charging
+        if self.is_charging and self.stamina > 5.0:
             self.power_charge_level += dt
             if self.power_charge_level > self.MAX_CHARGE:
                 self.power_charge_level = self.MAX_CHARGE
         else:
-            # Decay the charge if button is released before hitting the ball
             if self.power_charge_level > 0:
                 self.power_charge_level -= dt * 3
                 if self.power_charge_level < 0:
                     self.power_charge_level = 0.0
         
-        # Updates Movement
+        # Move player
         self.pos += self.vel * self.current_speed * dt
 
-        # Determines Animation State
+        # Update animation state and play footstep sounds
         new_state = "IDLE"
         if self.vel.length() > 0:
             if abs(self.vel.x) > abs(self.vel.y):
@@ -161,8 +153,6 @@ class Player(GameObject):
                 new_state = "WALK_DOWN" if self.vel.y > 0 else "WALK_UP"
             
             self.walk_timer += dt * self.stride_speed
-            # Fire a footstep once per stride peak. The old draw-time check
-            # played for several consecutive frames around every peak.
             footstep_index = math.floor((self.walk_timer - math.pi / 2) / math.pi)
             if footstep_index != self.last_footstep_index:
                 self.last_footstep_index = footstep_index
@@ -172,37 +162,32 @@ class Player(GameObject):
             self.walk_timer = 0.0
             self.last_footstep_index = None
 
-        # Transitions between States
         if new_state != self.anim_state:
             self.anim_state = new_state
             self.sfc = 0
             self.eta = 0.0
         
-        # Moving the frames
+        # Advance animation frame
         self.eta += dt
         if self.eta >= self.frame_rate:
             self.eta = 0.0
             self.sfc += 1
-            # makes sure sfc doesn't exceed available frames
             max_frames = self.frames_per_state.get(self.anim_state, 1)
             if self.sfc >= max_frames:
                 self.sfc = 0
     
     def updateStamina(self, dt):
-        # Decreases stamina when sprinting and recharges when standing/walking
+        # Drain stamina when sprinting and regenerate when resting
         if self.is_sprinting and self.stamina > 0:
             self.stamina -= self.sprint_decay_rate * dt
             self.recharge_timer = self.stamina_recharge_delay
             self.current_speed = self.sprint_speed
             
-            # Prevent negative stamina
             if self.stamina <= 0:
                 self.stamina = 0
-                self.current_speed = self.speed # Force walking if exhausted
+                self.current_speed = self.speed  # Out of breath
         else:
             self.current_speed = self.speed
-            
-            # Wait for delay, then recharge
             if self.recharge_timer > 0:
                 self.recharge_timer -= dt
             elif self.stamina < self.max_stamina:
@@ -211,7 +196,7 @@ class Player(GameObject):
                     self.stamina = self.max_stamina
     
     def applyStaminaCost(self, cost):
-        # Subtracts stamina for certain actions
+        # Deduct stamina for actions like power shots
         if self.stamina >= cost:
             self.stamina -= cost
             self.recharge_timer = self.stamina_recharge_delay
@@ -219,118 +204,93 @@ class Player(GameObject):
         return False
 
     def drawAnimated(self, screen, graphics_manager):
-        # Requests and renders correct frames in the correct order
-        
-        # Requests specfic player's images
+        # Draw player feet, body, and status bars
         foot_img = graphics_manager.get_image(f"{self.player_id}_foot") 
         body_img = graphics_manager.get_image(f"{self.player_id}_body")
         
-        # Update current angle based on movement state
         if self.anim_state == "WALK_UP": self.current_angle = 90
         elif self.anim_state == "WALK_DOWN": self.current_angle = 270
         elif self.anim_state == "WALK_LEFT": self.current_angle = 180
         elif self.anim_state == "WALK_RIGHT": self.current_angle = 0
 
-        # Rotate images 
         body_rotated = pygame.transform.rotate(body_img, self.current_angle)
         foot_rotated = pygame.transform.rotate(foot_img, self.current_angle)
 
-        # Math for walking
         center_x, center_y = int(self.pos.x), int(self.pos.y)
         stride_offset = math.sin(self.walk_timer) * self.stride_length
         body_bob = abs(math.sin(self.walk_timer)) * 3
 
-        # Draw feet
+        # Draw alternating feet
         if self.current_angle in [90, 270]:
-            # Vertical
             screen.blit(foot_rotated, foot_rotated.get_rect(center=(center_x - self.stance_width, center_y + stride_offset)))
             screen.blit(foot_rotated, foot_rotated.get_rect(center=(center_x + self.stance_width, center_y - stride_offset)))
         else:
-            # Horizontal
             screen.blit(foot_rotated, foot_rotated.get_rect(center=(center_x + stride_offset, center_y - self.stance_width)))
             screen.blit(foot_rotated, foot_rotated.get_rect(center=(center_x - stride_offset, center_y + self.stance_width)))
         
-        # Draw body on top
+        # Draw body
         screen.blit(body_rotated, body_rotated.get_rect(center=(center_x, center_y - body_bob)))
 
-        # Render stamina bar above body
+        # Draw stamina bar
         bar_width = 40
         fill_width = int((self.stamina / self.max_stamina) * bar_width)
         pygame.draw.rect(screen, "black", (center_x - 20, center_y - 35, bar_width, 5))
         pygame.draw.rect(screen, "yellow", (center_x - 20, center_y - 35, fill_width, 5))
 
-        # Render Charge Bar
+        # Draw power shot charge bar
         if self.power_charge_level > 0:
             charge_width = int((self.power_charge_level / self.MAX_CHARGE) * bar_width)
             pygame.draw.rect(screen, "orange", (center_x - 20, center_y - 42, charge_width, 4))
 
 
 class Ball(GameObject):
-    # Child class representing the football. Inherits pos and vel from GameObject, adds friction and the rolling animation
+    # Football with physics, friction, spin, and rotation animation
     def __init__(self, start_pos):
         super().__init__(start_pos)
 
-        # Constants for physics maths
         self.radius = 20
         self.friction = 0.98
         self.stop_threshold = 5.0
 
-        # Animation Variables
+        # Animation timing
         self.sfc = 0
         self.eta = 0.0
         self.frame_rate = 0.1
         self.total_frames = 4
 
-        # Possession Variables
         self.last_touched_by = None
-        
-        # Spin & Rotation Variables
         self.active_spin = 0.0
         self.target_offset = 0.0 
         self.rotation_angle = 0.0
     
     def applyPhysics(self, dt):
-        # Updates the ball's position and simulates friction.
-        # Apply Movement
+        # Update ball velocity, apply friction, and calculate rotation
         self.pos += self.vel * dt
-
-        # Apply Friction
         self.vel *= self.friction
 
-        # Update Rotation based on movement
         speed = self.vel.length()
         if speed > self.stop_threshold:
-            # Distance moved = r * theta -> theta = d / r
             self.rotation_angle -= (speed * dt * 2.0)
             if self.rotation_angle < 0:
                 self.rotation_angle += 360
 
-        # Stop the ball completely if it's moving extremely slowly
+        # Stop completely when very slow
         if self.vel.length() < self.stop_threshold:
             self.vel.update(0, 0)
 
-        # Calculate Rolling Animation Speed
         self._updateAnimation(dt)
 
     def _updateAnimation(self, dt):
-        # Private method to handle variable ball animation.
+        # Spin faster when ball moves fast
         speed = self.vel.length()
-        
         if speed > 0:
-            # use max() to prevent zero division or negative time errors
             dynamic_frame_rate = max(0.02, self.frame_rate - (speed * 0.0001))
-            
             self.eta += dt
             if self.eta >= dynamic_frame_rate:
                 self.eta = 0.0
-                self.sfc += 1
-                
-                # Loop the rotation animation
-                if self.sfc >= self.total_frames:
-                    self.sfc = 0
+                self.sfc = (self.sfc + 1) % self.total_frames
 
     def draw(self, screen, graphics_manager):
-        # Renders the ball
         ball_img = graphics_manager.get_image("ball")
         if ball_img:
             rotated_ball = pygame.transform.rotate(ball_img, self.rotation_angle)
@@ -341,7 +301,7 @@ class Ball(GameObject):
 
 
 class ParticleSystem:
-    # Manages a collection of particles for visual feedback (VFX)
+    # Simple particle burst effects for kicks and power shots
     def __init__(self):
         self.particles = []
 
@@ -371,8 +331,8 @@ class ParticleSystem:
     def draw(self, screen):
         for p in self.particles:
             alpha = int((p["life"] / p["max_life"]) * 255)
-            # Create a surface for transparency
-            s = pygame.Surface((p["size"]*2, p["size"]*2), pygame.SRCALPHA)
+            s = pygame.Surface((p["size"] * 2, p["size"] * 2), pygame.SRCALPHA)
             color = list(p["color"]) + [alpha]
             pygame.draw.circle(s, color, (p["size"], p["size"]), p["size"])
             screen.blit(s, (int(p["pos"].x - p["size"]), int(p["pos"].y - p["size"])))
+

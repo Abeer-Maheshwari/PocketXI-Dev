@@ -12,25 +12,24 @@ from src.ui import MenuSystem
 IS_WASM = sys.platform in ("emscripten", "wasi")
 
 pygame.mixer.pre_init(frequency=24000, size=-16, channels=2, buffer=2048)
-os.environ["SDL_VIDEO_HIGHDPI_DISABLED"] = "0"
 
 
 async def main():
-    """Application entry point handling menu navigation and match launches."""
+    # Main application loop connecting menus and matches
     launcher_backend = GameLauncher()
-    network_client = NetworkClient("wss://photographs-river-various-observed.trycloudflare.com")
+    network_client = NetworkClient("ws://152.67.155.250:8765")
+    asyncio.create_task(network_client.connect())
     menu_system = MenuSystem(launcher_backend, network_client=network_client)
 
     transition = TransitionManager(menu_system.screen)
 
-    # Initial menu draw
     menu_system.renderDisplay()
     previous_menu_state = menu_system.current_state
 
     while True:
         launch_mode = None
 
-        # Menu event loop
+        # Menu navigation loop
         while not launch_mode:
             if not IS_WASM:
                 menu_system.clock.tick(60)
@@ -44,42 +43,34 @@ async def main():
                 launch_mode = "ONLINE"
                 break
 
-            # Crossfade transition between menu sub-screens
-            if menu_system.current_state != previous_menu_state:
-                snapshot_before = menu_system.screen.copy()
+            # Handle smooth fade transition between menu pages
+            if previous_menu_state != menu_system.current_state:
+                outgoing_state = previous_menu_state
+                incoming_state = menu_system.current_state
 
-                # Render next state off-screen to snapshot target surface
-                real_flip = pygame.display.flip
-                real_update = pygame.display.update
-                pygame.display.flip = lambda: None
-                pygame.display.update = lambda *args, **kwargs: None
-                try:
-                    menu_system.renderDisplay()
-                    snapshot_after = menu_system.screen.copy()
-                finally:
-                    pygame.display.flip = real_flip
-                    pygame.display.update = real_update
+                def draw_outgoing(execute_flip=False):
+                    saved_state = menu_system.current_state
+                    menu_system.current_state = outgoing_state
+                    menu_system.renderDisplay(execute_flip=execute_flip)
+                    menu_system.current_state = saved_state
 
-                await transition.fade_between_surfaces(
-                    snapshot_before,
-                    snapshot_after,
-                    duration=0.55,
-                )
+                def draw_incoming(execute_flip=False):
+                    menu_system.renderDisplay(execute_flip=execute_flip)
+
+                await transition.fade_transition(draw_outgoing, draw_incoming, duration=0.2)
                 previous_menu_state = menu_system.current_state
-            else:
-                menu_system.renderDisplay()
 
+            menu_system.renderDisplay()
             await asyncio.sleep(0)
 
-        # Fade out menu before entering match
-        await transition.fade_out(duration=0.35)
+        # Transition into match
+        await transition.fade_out(draw_current_fn=menu_system.renderDisplay, duration=0.2)
 
-        # Initialize and launch match
         if launch_mode == "ONLINE":
             await transition.show_loading(
-                title="JOINING STADIUM...",
-                subtitle=f"Room: {network_client.room_code or 'Public'} | Connecting relay",
-                min_duration=0.7,
+                title="CONNECTING TO MATCH...",
+                subtitle="Synchronizing with server",
+                min_duration=0.4,
             )
             game = MatchController(
                 launcher_backend=launcher_backend,
@@ -90,8 +81,8 @@ async def main():
         else:
             await transition.show_loading(
                 title="LOADING MATCH...",
-                subtitle="Initializing heuristic AI engine",
-                min_duration=0.5,
+                subtitle="Setting up pitch and AI",
+                min_duration=0.4,
             )
             game = MatchController(
                 launcher_backend=launcher_backend,
@@ -99,13 +90,13 @@ async def main():
                 is_online=False,
             )
 
-        # Run match until completion or return
+        # Run gameplay loop
         await game.runMatchLoop()
 
-        # Fade out match upon exit
-        await transition.fade_out(duration=0.35)
+        # Fade out to return to menu
+        await transition.fade_out(draw_current_fn=game.renderScene, duration=0.2)
 
-        # Reset menu state
+        # Reset back to hub
         menu_system.current_state = "MAIN_HUB"
         previous_menu_state = "MAIN_HUB"
         if network_client:

@@ -3,27 +3,23 @@ import base64
 import hashlib
 import json
 import os
+import random
 import pygame
 from src.encryption import EncryptionEngine
 
-try:
-    import secrets
-    def get_secure_salt():
+
+def get_secure_salt():
+    # Generate random salt with WASM fallback
+    try:
+        import secrets
         return secrets.token_hex(16)
-except ImportError:
-    def get_secure_salt():
-        return os.urandom(16).hex()
+    except (ImportError, NotImplementedError):
+        return ''.join(random.choice("0123456789abcdef") for _ in range(32))
 
 
 class GameLauncher:
-    """Handles user accounts, data encryption, and persistent settings."""
-
+    # Handles local offline auth, saved career stats, and settings
     def __init__(self):
-        pygame.init()
-        self.clock = pygame.time.Clock()
-        self.font = pygame.font.SysFont(None, 40)
-
-        # File storage paths
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         data_path = os.path.join(base_path, "data")
         self.auth_path = os.path.join(data_path, "auth.json")
@@ -31,7 +27,7 @@ class GameLauncher:
         self.settings_path = os.path.join(data_path, "settings.json")
         self._initialise_local_storage_files()
 
-        # Settings defaults (overwritten by settings.json if present)
+        # Default settings
         self.master_volume = 0.8
         self.base_difficulty_tier = 3
         self.high_contrast_active = False
@@ -39,20 +35,17 @@ class GameLauncher:
         self.p2_is_ai = True
         self.load_settings()
 
-        # Menu and auth state
+        # Session state
         self.menu_state = "LOGIN_SCREEN"
         self.username_input = ""
         self.password_input = ""
-        self.active_input_box = "username"
         self.status_message = ""
         self.status_color = "white"
-
-        # Active session data
         self.active_user_session = None
         self.temp_saved_profile = None
 
     def _initialise_local_storage_files(self):
-        """Creates data directory and empty JSON files if they do not exist."""
+        # Create data directory and JSON storage files if missing
         os.makedirs(os.path.dirname(self.auth_path), exist_ok=True)
         for path in (self.auth_path, self.userdata_path, self.settings_path):
             if not os.path.exists(path):
@@ -61,7 +54,6 @@ class GameLauncher:
 
     @staticmethod
     def _load_json_dict(path):
-        """Reads a JSON file and safely returns a dictionary."""
         try:
             with open(path, "r", encoding="utf-8") as file:
                 data = json.load(file)
@@ -70,7 +62,6 @@ class GameLauncher:
             return {}
 
     def load_settings(self):
-        """Loads preferences from data/settings.json."""
         data = self._load_json_dict(self.settings_path)
         self.master_volume = float(data.get("master_volume", 0.8))
         self.base_difficulty_tier = int(data.get("base_difficulty_tier", 3))
@@ -79,7 +70,6 @@ class GameLauncher:
         self.high_contrast_active = bool(data.get("high_contrast_active", False))
 
     def save_settings(self):
-        """Saves current preferences to data/settings.json."""
         payload = {
             "master_volume": round(self.master_volume, 2),
             "base_difficulty_tier": int(self.base_difficulty_tier),
@@ -94,7 +84,6 @@ class GameLauncher:
             pass
 
     def validateCredentials(self, username, password):
-        """Validates character length and allowed characters."""
         u_clean = username.strip().replace(" ", "")
         p_clean = password.strip().replace(" ", "")
 
@@ -115,7 +104,6 @@ class GameLauncher:
         return True
 
     def register(self, username, password):
-        """Creates a new user, hashes the password with a salt, and saves initial stats."""
         u_clean = username.strip().replace(" ", "")
         p_clean = password.strip().replace(" ", "")
 
@@ -128,34 +116,33 @@ class GameLauncher:
             self.status_color = (255, 100, 100)
             return False
 
-        # Hash password using a random salt
         salt = get_secure_salt()
         salted_password = p_clean + salt
         password_hash = hashlib.sha256(salted_password.encode("utf-8")).hexdigest()
 
-        # Derive Fernet key from password for stats encryption
+        # Derive encryption key from password for stats
         derived_key = hashlib.sha256(p_clean.encode("utf-8")).digest()
         fernet_key = base64.urlsafe_b64encode(derived_key)
 
-        initial_stats_payload = {
+        initial_stats = {
             "goals": 0,
             "shots": 0,
             "possession_time": 0.0,
         }
 
-        encrypted_data_token = EncryptionEngine.encryptData(initial_stats_payload, fernet_key)
-        if not encrypted_data_token:
-            self.status_message = "Failed to encrypt initial stats."
-            self.status_color = (255, 100, 100)
-            return False
-
         try:
+            encrypted_token = EncryptionEngine.encryptData(initial_stats, fernet_key)
+            if not encrypted_token:
+                self.status_message = "Failed to encrypt initial stats."
+                self.status_color = (255, 100, 100)
+                return False
+
             auth_db[u_clean] = {"salt": salt, "hash": password_hash}
             with open(self.auth_path, "w", encoding="utf-8") as f:
                 json.dump(auth_db, f, indent=4)
 
             user_db = self._load_json_dict(self.userdata_path)
-            user_db[u_clean] = encrypted_data_token
+            user_db[u_clean] = encrypted_token
             with open(self.userdata_path, "w", encoding="utf-8") as f:
                 json.dump(user_db, f, indent=4)
 
@@ -170,7 +157,6 @@ class GameLauncher:
             return False
 
     def login(self, username, password):
-        """Verifies password hash and loads the user's decrypted profile."""
         u_clean = username.strip().replace(" ", "")
         p_clean = password.strip().replace(" ", "")
 
@@ -189,7 +175,6 @@ class GameLauncher:
             self.status_color = (255, 100, 100)
             return False
 
-        # Verify password hash
         stored_salt = record["salt"]
         stored_hash = record["hash"]
         computed_hash = hashlib.sha256((p_clean + stored_salt).encode("utf-8")).hexdigest()
@@ -199,26 +184,30 @@ class GameLauncher:
             self.status_color = (255, 100, 100)
             return False
 
-        # Decrypt stats using the verified password
         derived_key = hashlib.sha256(p_clean.encode("utf-8")).digest()
         fernet_key = base64.urlsafe_b64encode(derived_key)
 
         user_db = self._load_json_dict(self.userdata_path)
-        encrypted_token_string = user_db.get(u_clean)
-        if not isinstance(encrypted_token_string, str):
+        encrypted_token = user_db.get(u_clean)
+        if not isinstance(encrypted_token, str):
             self.status_message = "No saved data found."
             self.status_color = (255, 100, 100)
             return False
 
-        decrypted_profile = EncryptionEngine.decryptData(encrypted_token_string, fernet_key)
-        if decrypted_profile is not None:
-            self.active_user_session = u_clean
-            self.temp_saved_profile = decrypted_profile
-            self.status_message = f"Welcome back, {u_clean}."
-            self.status_color = (100, 255, 100)
-            self.menu_state = "MAIN_HUB"
-            return True
-        else:
-            self.status_message = "Failed to decrypt profile data."
+        try:
+            decrypted_profile = EncryptionEngine.decryptData(encrypted_token, fernet_key)
+            if decrypted_profile is not None:
+                self.active_user_session = u_clean
+                self.temp_saved_profile = decrypted_profile
+                self.status_message = f"Welcome back, {u_clean}."
+                self.status_color = (100, 255, 100)
+                self.menu_state = "MAIN_HUB"
+                return True
+            else:
+                self.status_message = "Failed to decrypt profile data."
+                self.status_color = (255, 100, 100)
+                return False
+        except Exception as e:
+            self.status_message = "Decryption error occurred."
             self.status_color = (255, 100, 100)
             return False

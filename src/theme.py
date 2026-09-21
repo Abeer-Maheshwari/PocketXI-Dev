@@ -8,37 +8,34 @@ if not pygame.get_init():
 if not pygame.freetype.get_init():
     pygame.freetype.init()
 
-# Color palette definition:
-# Menus use Dark Slate Grey (#416165) and Dusty Olive (#709176).
-# Gameplay uses Deep Plum (#925E78), Dusty Rose (#A07178), and Warm Almond (#F2D0A4).
+# Game and menu color palette
 THEME = {
-    # Menu backgrounds and surfaces
+    # Menu colors
     "bg_dark": (20, 30, 32),
     "card_bg": (33, 49, 51),
     "card_border": (50, 75, 78),
     "input_bg": (25, 38, 39),
     "secondary": (65, 97, 101),
 
-    # Menu interactive accents and buttons
+    # Accent and button colors
     "primary": (112, 145, 118),
     "border": (112, 145, 118),
     "border_highlight": (142, 178, 149),
     "notification": (112, 145, 118),
 
-    # Gameplay entities and field lines
+    # Pitch and gameplay colors
     "pitch": (33, 49, 51),
     "lines": (242, 208, 164),
     "ball": (242, 208, 164),
-    "team_home": (146, 94, 120),  # Player 1 (Deep Plum)
-    "team_away": (160, 113, 120),  # Player 2 (Dusty Rose)
+    "team_home": (146, 94, 120),  # P1
+    "team_away": (160, 113, 120),  # P2
     "danger": (146, 94, 120),
 
-    # General text colors
+    # Text colors
     "text_primary": (242, 208, 164),
     "text_muted": (170, 158, 146),
 }
 
-# Font file maps matching requested sizes to font files
 FONT_FILES = {
     11: "font-9.ttf",
     16: "font-14.ttf",
@@ -59,8 +56,7 @@ _HUD_CACHE = {}
 
 
 class SharpFontWrapper:
-    """Wraps FreeType font to render directly onto opaque surfaces to avoid edge artifacts."""
-
+    # Font wrapper using FreeType for sharp text rendering
     def __init__(self, ft_font, size):
         self.ft = ft_font
         self.size = size
@@ -88,7 +84,7 @@ class SharpFontWrapper:
 
 
 def get_font(size):
-    """Loads and caches general UI font at the requested size."""
+    # Load and cache general UI fonts
     if size in _FONT_CACHE:
         return _FONT_CACHE[size]
 
@@ -116,7 +112,7 @@ def get_font(size):
 
 
 def get_hud_font(size):
-    """Loads and caches scoreboard and HUD font at the requested size."""
+    # Load and cache HUD numbers and score fonts
     if size in _HUD_CACHE:
         return _HUD_CACHE[size]
 

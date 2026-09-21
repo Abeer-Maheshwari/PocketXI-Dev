@@ -41,6 +41,7 @@ Pocket XI is a top-down arcade football game where two players compete on a sing
 - **Sound Design** - Procedural crowd chants, impact sounds, and ambient effects
 - **Stats Tracking** - Goals, shots, and possession time saved per user profile
 - **Transitions Between Screens** - Fade in/out transitions and loading menus
+- **Cloud-Hosted Database** - All user data is now hosted on the cloud.
 
 ## Requirements
 
@@ -66,6 +67,9 @@ python PocketXI.py
 pip install pygbag
 python -m pygbag main.py
 ```
+
+## Server Hosting
+If you would like to host the server on your own, you can use the server.py provided (make sure to change all the ip-addresses and values though).
 
 ## Controls
 

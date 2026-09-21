@@ -4,6 +4,8 @@ import sys
 import pygame
 from src.theme import THEME, get_font
 
+IS_WASM = sys.platform in ("emscripten", "wasi")
+
 try:
     import pyautogui
     HAS_PYAUTOGUI = True
@@ -12,8 +14,7 @@ except ImportError:
 
 
 class Button:
-    """Button with hover scale and color transitions."""
-
+    # Clickable UI button with hover effects
     def __init__(self, x, y, width, height, text, font_size=24, base_color=None, hover_color=None, text_color=None):
         self.rect = pygame.Rect(x, y, width, height)
         self.original_rect = self.rect.copy()
@@ -26,7 +27,6 @@ class Button:
         self.scale = 1.0
 
     def draw(self, screen):
-        """Draws button background, border, and label."""
         mouse_pos = pygame.mouse.get_pos()
         is_hovered = self.original_rect.collidepoint(mouse_pos)
 
@@ -56,8 +56,7 @@ class Button:
 
 
 class Slider:
-    """Horizontal slider for numerical settings."""
-
+    # Horizontal slider for volume and difficulty settings
     def __init__(self, x, y, width, height, min_val, max_val, initial_val, label, font_size=14):
         self.rect = pygame.Rect(x, y, width, height)
         self.min_val = min_val
@@ -70,12 +69,10 @@ class Slider:
         self.update_handle_pos()
 
     def update_handle_pos(self):
-        """Calculates handle position from current value."""
         ratio = (self.val - self.min_val) / (self.max_val - self.min_val)
         self.handle_x = self.rect.x + int(ratio * self.rect.width)
 
     def draw(self, screen):
-        """Draws track, active fill bar, handle, and text label."""
         val_str = f"{int(self.val) if self.max_val > 1 else round(self.val, 2)}"
         lbl_surf = self.font.render(f"{self.label}: {val_str}", True, THEME["text_primary"], THEME["card_bg"])
         screen.blit(lbl_surf, (self.rect.x, self.rect.y - int(self.font.get_height() * 1.5)))
@@ -91,9 +88,8 @@ class Slider:
         pygame.draw.circle(screen, THEME["border"], (self.handle_x, self.rect.centery), self.handle_radius, 2)
 
     def handle_event(self, event):
-        """Tracks dragging when clicking on handle or track."""
         if event.type == pygame.MOUSEBUTTONDOWN:
-            mouse_pos = event.pos
+            mouse_pos = event.pos if hasattr(event, "pos") else pygame.mouse.get_pos()
             handle_rect = pygame.Rect(
                 self.handle_x - self.handle_radius,
                 self.rect.y - self.handle_radius,
@@ -106,10 +102,10 @@ class Slider:
         elif event.type == pygame.MOUSEBUTTONUP:
             self.active = False
         elif event.type == pygame.MOUSEMOTION and self.active:
-            self.update_value(event.pos[0])
+            mouse_pos = event.pos if hasattr(event, "pos") else pygame.mouse.get_pos()
+            self.update_value(mouse_pos[0])
 
     def update_value(self, mouse_x):
-        """Clamps handle to track bounds and recalculates value."""
         clamped_x = max(self.rect.x, min(mouse_x, self.rect.x + self.rect.width))
         ratio = (clamped_x - self.rect.x) / self.rect.width
         self.val = self.min_val + ratio * (self.max_val - self.min_val)
@@ -117,37 +113,27 @@ class Slider:
 
 
 class MenuSystem:
-    """Manages all menu interfaces, screen states, and user interactions."""
+    # Handles menu screens, inputs, and account login/registration
 
     def __init__(self, game_launcher, network_client=None):
         pygame.init()
 
-        # Scale window to ~82% desktop height to avoid overlapping dock
-        if HAS_PYAUTOGUI:
-            try:
-                screen_w, screen_h = pyautogui.size()
-                target_h = int(screen_h * 0.82)
-                self.height = max(720, min(target_h, 1080))
-                self.width = int(self.height * (16 / 9))
-            except Exception:
-                self.width = 1280
-                self.height = 720
-        else:
-            self.width = 1280
-            self.height = 720
+        self.width = 1280
+        self.height = 720
+        self.scale = 1.0
 
-        self.screen = pygame.display.set_mode((self.width, self.height), pygame.DOUBLEBUF, vsync=1)
+        if IS_WASM:
+            self.screen = pygame.display.set_mode((1280, 720))
+        else:
+            self.screen = pygame.display.set_mode((1280, 720), pygame.DOUBLEBUF, vsync=1)
+
         pygame.display.set_caption("Pocket XI - Main Menu")
         self.clock = pygame.time.Clock()
 
-        # Proportional scale factor relative to 720p base
-        self.scale = self.height / 720.0
-
         def s(v):
-            return int(v * self.scale)
+            return int(v)
         self.s = s
 
-        # Optical typography tiers
         self.font_hero = get_font(s(60))
         self.font_title = get_font(s(36))
         self.font_button = get_font(s(24))
@@ -168,7 +154,7 @@ class MenuSystem:
         self.lobby_status = "Not connected"
         self.lobby_status_color = THEME["text_muted"]
 
-        # Main hub layout
+        # Layout geometry
         margin_x = s(45)
         col_w = (self.width - (margin_x * 2) - s(25)) // 2
         self.rect_header = pygame.Rect(margin_x, s(25), self.width - (margin_x * 2), s(70))
@@ -181,23 +167,19 @@ class MenuSystem:
         self.rect_settings = pygame.Rect(self.width - margin_x - (btn_w * 2) - s(15), s(560), btn_w, btn_h)
         self.rect_logout = pygame.Rect(self.width - margin_x - btn_w, s(560), btn_w, btn_h)
 
-        # Global back button
         self.rect_back = pygame.Rect(self.width // 2 - s(130), s(602), s(260), s(48))
 
-        # Authentication input fields
         auth_w = s(520)
         self.rect_username = pygame.Rect(self.width // 2 - auth_w // 2, s(210), auth_w, s(48))
         self.rect_password = pygame.Rect(self.width // 2 - auth_w // 2, s(275), auth_w, s(48))
         self.rect_submit = pygame.Rect(self.width // 2 - s(215), s(345), s(205), s(48))
         self.rect_auth_toggle = pygame.Rect(self.width // 2 + s(10), s(345), s(205), s(48))
 
-        # Settings sliders and AI mode toggles
         self.vol_slider = Slider(s(90), s(230), s(420), s(14), 0.0, 1.0, self.game_launcher.master_volume, "Master Volume", font_size=s(14))
         self.diff_slider = Slider(s(90), s(320), s(420), s(14), 1, 5, self.game_launcher.base_difficulty_tier, "AI Difficulty", font_size=s(14))
         self.rect_p1_toggle = pygame.Rect(s(90), s(400), s(420), s(44))
         self.rect_p2_toggle = pygame.Rect(s(90), s(455), s(420), s(44))
 
-        # Lobby buttons
         self.rect_host_room = pygame.Rect(self.width // 2 - s(250), s(210), s(500), s(56))
         self.rect_join_box = pygame.Rect(self.width // 2 - s(250), s(295), s(330), s(56))
         self.rect_join_btn = pygame.Rect(self.width // 2 + s(95), s(295), s(155), s(56))
@@ -207,7 +189,7 @@ class MenuSystem:
         self.auth_button_hover = {"submit": 0.0, "toggle": 0.0}
 
     def _draw_keybind_row(self, surface, action_label, key_text, left_x, right_x, center_y):
-        """Draws keybind label on left and keycap badge on right."""
+        # Draw keybind action and keycap pill
         lbl = self.font_body.render(action_label, True, THEME["text_muted"], THEME["card_bg"])
         surface.blit(lbl, (left_x, center_y - lbl.get_height() // 2))
 
@@ -222,7 +204,7 @@ class MenuSystem:
         surface.blit(key_surf, key_surf.get_rect(center=pill.center))
 
     def _draw_toggle_button(self, rect, player_label, is_ai):
-        """Draws setting button toggling between human and AI control."""
+        # Toggle button for Human vs AI control
         mouse_pos = pygame.mouse.get_pos()
         hovered = rect.collidepoint(mouse_pos)
         fill_col = THEME["card_bg"]
@@ -250,8 +232,8 @@ class MenuSystem:
         self.screen.blit(badge_surf, badge_surf.get_rect(center=pill.center))
 
     def drawLoginScreen(self):
-        """Renders login and registration account interface."""
-        title_text = "ACCOUNT LOGIN" if self.current_state == "LOGIN_SCREEN" else "NEW MANAGER REGISTRATION"
+        # Login / registration screen
+        title_text = "LOGIN" if self.current_state == "LOGIN_SCREEN" else "REGISTRATION"
         panel = pygame.Rect(self.width // 2 - self.s(310), self.s(125), self.s(620), self.s(370))
 
         pygame.draw.rect(self.screen, (8, 6, 6), panel.move(0, 6), border_radius=14)
@@ -284,7 +266,7 @@ class MenuSystem:
         self.screen.blit(hint, hint.get_rect(center=(self.width // 2, self.s(455))))
 
     def _draw_auth_field(self, rect, field_name):
-        """Draws input field box with highlight when selected."""
+        # Draw input field with active border highlight
         active = self.active_field == field_name
         hovered = rect.collidepoint(pygame.mouse.get_pos())
         fill = THEME["card_bg"] if active else THEME["input_bg"]
@@ -295,7 +277,7 @@ class MenuSystem:
         pygame.draw.rect(self.screen, border, rect, 2, border_radius=8)
 
     def _draw_auth_button(self, rect, label, is_primary, key):
-        """Draws submit and screen switch button with hover animation."""
+        # Draw submit/toggle button with hover animation
         hovered = rect.collidepoint(pygame.mouse.get_pos())
         progress = self.auth_button_hover[key]
         progress += ((1.0 if hovered else 0.0) - progress) * 0.2
@@ -316,7 +298,7 @@ class MenuSystem:
         self.screen.blit(text, text.get_rect(center=draw_rect.center))
 
     def drawMainHub(self):
-        """Renders main hub with top-right username and centered game title."""
+        # Main menu hub
         user_name = (self.game_launcher.active_user_session or "PLAYER").upper()
         user_surf = self.font_body.render(user_name, True, THEME["text_muted"], THEME["bg_dark"])
         self.screen.blit(user_surf, user_surf.get_rect(topright=(self.width - self.s(45), self.s(25))))
@@ -337,19 +319,17 @@ class MenuSystem:
             self._draw_hub_button(rect, label)
 
     def _draw_hub_button(self, rect, label):
-        """Draws hub button tile with hover elevation."""
+        # Draw interactive menu tile
         hovered = rect.collidepoint(pygame.mouse.get_pos())
         progress = self.hub_button_hover.get(label, 0.0)
         progress += ((1.0 if hovered else 0.0) - progress) * 0.22
         self.hub_button_hover[label] = progress
 
-        scale = 1.0 + progress * 0.02
+        scale = 1.0 + progress * 0.025
         draw_rect = pygame.Rect(0, 0, int(rect.width * scale), int(rect.height * scale))
         draw_rect.center = rect.center
 
-        base_colour = pygame.Color(*THEME["card_bg"])
-        accent_colour = pygame.Color(*THEME["primary"])
-        fill_colour = base_colour.lerp(accent_colour, progress * 0.35)
+        fill_colour = pygame.Color(*THEME["card_bg"]).lerp(pygame.Color(*THEME["primary"]), progress * 0.25)
         border_colour = THEME["primary"] if hovered else THEME["border"]
 
         pygame.draw.rect(self.screen, (8, 6, 6), draw_rect.move(0, int(5 - progress * 2)), border_radius=10)
@@ -360,9 +340,9 @@ class MenuSystem:
         self.screen.blit(label_surface, label_surface.get_rect(center=draw_rect.center))
 
     def drawOnlineLobby(self):
-        """Renders online lobby with room creation and code joining."""
+        # Multiplayer lobby screen
         self.screen.fill(THEME["bg_dark"])
-        title_surf = self.font_title.render("MULTIPLAYER LOBBY", True, THEME["text_primary"], THEME["bg_dark"])
+        title_surf = self.font_title.render("LOBBY", True, THEME["text_primary"], THEME["bg_dark"])
         self.screen.blit(title_surf, title_surf.get_rect(center=(self.width // 2, self.s(85))))
 
         status_surf = self.font_body.render(self.lobby_status.upper(), True, self.lobby_status_color, THEME["bg_dark"])
@@ -376,7 +356,7 @@ class MenuSystem:
         if self.network_client and self.network_client.room_code and self.network_client.player_role == "p1":
             host_text = f"ROOM CODE: {self.network_client.room_code} (WAITING...)"
         else:
-            host_text = "CREATE PRIVATE ROOM (HOST)"
+            host_text = "CREATE ROOM"
         h_surf = self.font_button.render(host_text, True, THEME["text_primary"], host_bg)
         self.screen.blit(h_surf, h_surf.get_rect(center=self.rect_host_room.center))
 
@@ -396,10 +376,10 @@ class MenuSystem:
         self._draw_back_button()
 
     def drawSettingsMenu(self):
-        """Renders settings for audio, AI difficulty, AI bot toggles, and keybindings."""
+        # Settings menu (sliders, controls, keybinds)
         self.screen.fill(THEME["bg_dark"])
 
-        title_surf = self.font_title.render("SETTINGS & CONTROLS", True, THEME["text_primary"], THEME["bg_dark"])
+        title_surf = self.font_title.render("SETTINGS", True, THEME["text_primary"], THEME["bg_dark"])
         self.screen.blit(title_surf, title_surf.get_rect(center=(self.width // 2, self.s(55))))
 
         card_w = self.s(560)
@@ -430,10 +410,10 @@ class MenuSystem:
         pygame.draw.rect(self.screen, THEME["card_bg"], right_card, border_radius=12)
         pygame.draw.rect(self.screen, THEME["border"], right_card, 2, border_radius=12)
 
-        sec2_title = self.font_button.render("ALL KEYBOARD CONTROLS", True, THEME["text_primary"], THEME["card_bg"])
+        sec2_title = self.font_button.render("CONTROLS", True, THEME["text_primary"], THEME["card_bg"])
         self.screen.blit(sec2_title, (right_card.x + self.s(30), right_card.y + self.s(25)))
 
-        match_cat = self.font_sub.render("MATCHPLAY", True, THEME["primary"], THEME["card_bg"])
+        match_cat = self.font_sub.render("GAMEPLAY", True, THEME["primary"], THEME["card_bg"])
         self.screen.blit(match_cat, (right_card.x + self.s(30), right_card.y + self.s(70)))
 
         all_binds = [
@@ -445,7 +425,7 @@ class MenuSystem:
         for label, key_text, row_y in all_binds:
             self._draw_keybind_row(self.screen, label, key_text, right_card.x + self.s(30), right_card.right - self.s(30), right_card.y + row_y)
 
-        menu_cat = self.font_sub.render("MENU NAVIGATION", True, THEME["primary"], THEME["card_bg"])
+        menu_cat = self.font_sub.render("MENUS", True, THEME["primary"], THEME["card_bg"])
         self.screen.blit(menu_cat, (right_card.x + self.s(30), right_card.y + self.s(275)))
 
         menu_binds = [
@@ -459,10 +439,10 @@ class MenuSystem:
         self._draw_back_button()
 
     def drawStatsDashboard(self):
-        """Renders lifetime statistics in a clean card layout."""
+        # Career stats screen
         self.screen.fill(THEME["bg_dark"])
 
-        title_surf = self.font_title.render("CAREER STATS", True, THEME["text_primary"], THEME["bg_dark"])
+        title_surf = self.font_title.render("STATS", True, THEME["text_primary"], THEME["bg_dark"])
         self.screen.blit(title_surf, title_surf.get_rect(center=(self.width // 2, self.s(65))))
 
         card_w = self.s(680)
@@ -485,10 +465,10 @@ class MenuSystem:
         accuracy_str = f"{round((goals / shots * 100), 1)}%" if shots > 0 else "0.0%"
 
         stat_rows = [
-            ("TOTAL GOALS", str(goals)),
-            ("TOTAL SHOTS", str(shots)),
-            ("SHOT ACCURACY", accuracy_str),
-            ("TIME IN POSSESSION", poss_str),
+            ("GOALS", str(goals)),
+            ("SHOTS", str(shots)),
+            ("ACCURACY", accuracy_str),
+            ("POSSESSION TIME", poss_str),
         ]
 
         start_y = card.top + self.s(78)
@@ -515,7 +495,7 @@ class MenuSystem:
         self._draw_back_button()
 
     def _draw_back_button(self):
-        """Draws back button with vector line-and-chevron arrow."""
+        # Back to menu button
         mouse_pos = pygame.mouse.get_pos()
         hovered = self.rect_back.collidepoint(mouse_pos)
         progress = self.hub_button_hover.get("back", 0.0)
@@ -556,31 +536,69 @@ class MenuSystem:
         text_y = cy - (label.get_height() // 2)
         self.screen.blit(label, (text_x, text_y))
 
-    def executeSubmitAction(self):
-        """Validates credentials and submits login or registration."""
+    async def executeSubmitAction(self):
+        # Submit login or registration to server
+        if not self.username_buffer.strip() or not self.password_buffer.strip():
+            self.notification_text = "Please enter username and password."
+            self.notification_color = THEME["danger"]
+            return
+
         if self.current_state == "LOGIN_SCREEN":
-            res = self.game_launcher.login(self.username_buffer, self.password_buffer)
-            if res is True:
-                self.temp_saved_profile = self.game_launcher.temp_saved_profile
-                self.notification_text = "Login Successful."
-                self.notification_color = THEME["notification"]
-                self.current_state = "MAIN_HUB"
+            self.notification_text = "Authenticating..."
+            self.notification_color = THEME["secondary"]
+            self.renderDisplay()
+
+            if self.network_client:
+                resp = await self.network_client.auth_login(self.username_buffer, self.password_buffer)
+                if resp.get("status") == "login_success":
+                    self.temp_saved_profile = resp.get("profile", {"goals": 0, "shots": 0, "possession_time": 0.0})
+                    if self.game_launcher:
+                        self.game_launcher.active_user_session = self.username_buffer.strip().replace(" ", "")
+                        self.game_launcher.temp_saved_profile = self.temp_saved_profile.copy()
+                    self.notification_text = f"Welcome back, {self.username_buffer}!"
+                    self.notification_color = THEME["notification"]
+                    self.current_state = "MAIN_HUB"
+                else:
+                    self.notification_text = resp.get("message", "Login failed.")
+                    self.notification_color = THEME["danger"]
             else:
-                self.notification_text = self.game_launcher.status_message
-                self.notification_color = THEME["danger"]
+                res = self.game_launcher.login(self.username_buffer, self.password_buffer)
+                if res is True:
+                    self.temp_saved_profile = self.game_launcher.temp_saved_profile
+                    self.notification_text = "Login Successful."
+                    self.notification_color = THEME["notification"]
+                    self.current_state = "MAIN_HUB"
+                else:
+                    self.notification_text = self.game_launcher.status_message
+                    self.notification_color = THEME["danger"]
         else:
-            status = self.game_launcher.register(self.username_buffer, self.password_buffer)
-            if status is True:
-                self.notification_text = "Registration successful. Please log in."
-                self.notification_color = THEME["notification"]
-                self.current_state = "LOGIN_SCREEN"
-                self.password_buffer = ""
+            self.notification_text = "Creating account..."
+            self.notification_color = THEME["secondary"]
+            self.renderDisplay()
+
+            if self.network_client:
+                resp = await self.network_client.auth_register(self.username_buffer, self.password_buffer)
+                if resp.get("status") == "register_success":
+                    self.notification_text = "Account created! Please log in."
+                    self.notification_color = THEME["notification"]
+                    self.current_state = "LOGIN_SCREEN"
+                    self.password_buffer = ""
+                else:
+                    self.notification_text = resp.get("message", "Registration failed.")
+                    self.notification_color = THEME["danger"]
             else:
-                self.notification_text = self.game_launcher.status_message
-                self.notification_color = THEME["danger"]
+                status = self.game_launcher.register(self.username_buffer, self.password_buffer)
+                if status is True:
+                    self.notification_text = "Registration successful. Please log in."
+                    self.notification_color = THEME["notification"]
+                    self.current_state = "LOGIN_SCREEN"
+                    self.password_buffer = ""
+                else:
+                    self.notification_text = self.game_launcher.status_message
+                    self.notification_color = THEME["danger"]
 
     def executeLogoutAction(self):
-        """Clears active session and returns to login."""
+        # Log out and clear current user session
         self.game_launcher.active_user_session = None
         self.temp_saved_profile = None
         self.username_buffer = ""
@@ -590,8 +608,17 @@ class MenuSystem:
         self.current_state = "LOGIN_SCREEN"
 
     async def processEvents(self):
-        """Processes input events, navigation, and settings changes."""
+        # Handle input events and menu navigation
         if self.network_client and self.current_state == "ONLINE_LOBBY":
+            self.network_client.pop_messages()
+
+            if self.network_client.room_code and self.network_client.player_role == "p1":
+                self.lobby_status = f"ROOM CREATED: {self.network_client.room_code} (WAITING FOR OPPONENT)"
+                self.lobby_status_color = THEME["notification"]
+            elif self.network_client.room_code and self.network_client.player_role == "p2":
+                self.lobby_status = f"JOINED ROOM: {self.network_client.room_code} (WAITING FOR HOST)"
+                self.lobby_status_color = THEME["notification"]
+
             if self.network_client.match_started:
                 return "LAUNCH_ONLINE_MATCH"
             if self.network_client.error_message:
@@ -616,7 +643,7 @@ class MenuSystem:
                     self.game_launcher.save_settings()
 
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    mouse_pos = event.pos
+                    mouse_pos = event.pos if hasattr(event, "pos") else pygame.mouse.get_pos()
                     if self.rect_p1_toggle.collidepoint(mouse_pos):
                         self.game_launcher.p1_is_ai = not self.game_launcher.p1_is_ai
                         self.game_launcher.save_settings()
@@ -633,7 +660,7 @@ class MenuSystem:
                     elif self.rect_password.collidepoint(mouse_pos):
                         self.active_field = "password"
                     elif self.rect_submit.collidepoint(mouse_pos):
-                        self.executeSubmitAction()
+                        await self.executeSubmitAction()
                     elif self.rect_auth_toggle.collidepoint(mouse_pos):
                         self.current_state = "REGISTER_SCREEN" if self.current_state == "LOGIN_SCREEN" else "LOGIN_SCREEN"
                         self.notification_text = ""
@@ -683,7 +710,7 @@ class MenuSystem:
                         self.current_state = "REGISTER_SCREEN" if self.current_state == "LOGIN_SCREEN" else "LOGIN_SCREEN"
                         self.notification_text = ""
                     elif event.key == pygame.K_RETURN:
-                        self.executeSubmitAction()
+                        await self.executeSubmitAction()
                     elif event.key == pygame.K_BACKSPACE:
                         if self.active_field == "username":
                             self.username_buffer = self.username_buffer[:-1]
@@ -718,8 +745,8 @@ class MenuSystem:
 
         return "KEEP_RUNNING"
 
-    def renderDisplay(self):
-        """Renders active menu screen based on current state."""
+    def renderDisplay(self, execute_flip=True):
+        # Render current menu state
         self.screen.fill(THEME["bg_dark"])
 
         if self.notification_text:
@@ -737,4 +764,5 @@ class MenuSystem:
         elif self.current_state == "STATS_DASHBOARD":
             self.drawStatsDashboard()
 
-        pygame.display.flip()
+        if execute_flip:
+            pygame.display.flip()

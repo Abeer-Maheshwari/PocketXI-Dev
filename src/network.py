@@ -19,33 +19,31 @@ else:
 
 
 class NetworkClient:
-    """Manages asynchronous WebSocket communication across Desktop and Pygbag builds."""
+    # Handles WebSocket connection for online multiplayer and cloud authentication
 
-    def __init__(self, server_uri="wss://152.67.155.250:8765"):
+    def __init__(self, server_uri="ws://152.67.155.250:8765"):
         self.server_uri = server_uri
         self.is_wasm = IS_WASM
 
-        # Connection & Lobby State
         self.connected = False
         self.room_code = None
         self.player_role = None  # "p1" or "p2"
         self.match_started = False
         self.error_message = None
+        self.last_auth_response = None
 
-        # Message queue
         self.inbox = deque()
         self._ws = None
         self._receive_task = None
 
     async def connect(self):
-        """Establish connection with the relay server."""
         if self.connected:
             return True
 
         self.error_message = None
 
         if not self.is_wasm:
-            # Desktop Async Engine
+            # Desktop connection using websockets library
             if websockets is None:
                 self.error_message = "Python 'websockets' library not installed."
                 return False
@@ -60,7 +58,7 @@ class NetworkClient:
                 self.connected = False
                 return False
         else:
-            # Pygbag / Browser JS Engine
+            # Browser WebSocket connection via Pygbag JS bridge
             try:
                 js_code = (
                     "window.__pxi_inbox = window.__pxi_inbox || [];"
@@ -78,9 +76,7 @@ class NetworkClient:
                 )
                 platform.window.eval(js_code)
 
-                # Poll for up to 8 seconds
                 for _ in range(80):
-                    # Direct check: readyState 1 means OPEN
                     ready_state = int(platform.window.eval("window.__pxi_socket ? window.__pxi_socket.readyState : -1"))
                     status = str(platform.window.eval("window.__pxi_status || ''"))
 
@@ -100,6 +96,50 @@ class NetworkClient:
                 self.error_message = f"WASM Socket failed: {e}"
                 return False
 
+    async def auth_register(self, username, password):
+        if not self.connected:
+            connected = await self.connect()
+            if not connected:
+                return {"status": "auth_error", "message": self.error_message or "Could not connect to cloud server."}
+
+        self.last_auth_response = None
+        await self._send({"action": "register", "username": username, "password": password})
+
+        for _ in range(50):
+            self.pop_messages()
+            if self.last_auth_response:
+                resp = self.last_auth_response
+                self.last_auth_response = None
+                return resp
+            await asyncio.sleep(0.1)
+
+        return {"status": "auth_error", "message": "Server timeout."}
+
+    async def auth_login(self, username, password):
+        if not self.connected:
+            connected = await self.connect()
+            if not connected:
+                return {"status": "auth_error", "message": self.error_message or "Could not connect to cloud server."}
+
+        self.last_auth_response = None
+        await self._send({"action": "login", "username": username, "password": password})
+
+        for _ in range(50):
+            self.pop_messages()
+            if self.last_auth_response:
+                resp = self.last_auth_response
+                self.last_auth_response = None
+                return resp
+            await asyncio.sleep(0.1)
+
+        return {"status": "auth_error", "message": "Server timeout."}
+
+    async def auth_save_stats(self, username, stats):
+        if not self.connected:
+            await self.connect()
+        if self.connected:
+            await self._send({"action": "save_stats", "username": username, "stats": stats})
+
     async def create_room(self):
         await self._send({"action": "create"})
 
@@ -114,7 +154,9 @@ class NetworkClient:
     def _handle_incoming_packet(self, data):
         status = data.get("status")
 
-        if status == "room_created":
+        if status in ("register_success", "login_success", "auth_error", "stats_saved"):
+            self.last_auth_response = data
+        elif status == "room_created":
             self.room_code = data.get("room")
             self.player_role = "p1"
         elif status == "join_success":
@@ -124,24 +166,22 @@ class NetworkClient:
             self.match_started = True
         elif status == "error":
             self.error_message = data.get("message", "Server error")
-
         self.inbox.append(data)
 
     def pop_messages(self):
-        """Drain and return queued packets during a Pygame frame."""
-        # Poll WASM JS Inbox if running on web
+        # Fetch any newly arrived messages from queue
         if self.is_wasm and self.connected:
             try:
-                # Retrieve pending messages from the window array
-                count = int(platform.window.eval("window.__pxi_inbox.length;"))
+                count = int(platform.window.eval("(window.__pxi_inbox && window.__pxi_inbox.length) || 0;"))
                 if count > 0:
                     for _ in range(count):
                         raw_msg = str(platform.window.eval("window.__pxi_inbox.shift();"))
-                        try:
-                            data = json.loads(raw_msg)
-                            self._handle_incoming_packet(data)
-                        except json.JSONDecodeError:
-                            continue
+                        if raw_msg and raw_msg not in ("undefined", "null"):
+                            try:
+                                data = json.loads(raw_msg)
+                                self._handle_incoming_packet(data)
+                            except json.JSONDecodeError:
+                                continue
             except Exception:
                 pass
 
@@ -159,9 +199,8 @@ class NetworkClient:
             if not self.is_wasm and self._ws:
                 await self._ws.send(raw_msg)
             elif self.is_wasm:
-                # Escape quotes for JS eval
                 safe_json = json.dumps(raw_msg)
-                platform.window.eval(f"window.__pxi_socket.send({safe_json});")
+                platform.window.eval(f"if (window.__pxi_socket && window.__pxi_socket.readyState === 1) {{ window.__pxi_socket.send({safe_json}); }}")
         except Exception as e:
             self.error_message = f"Send error: {e}"
 
@@ -180,13 +219,17 @@ class NetworkClient:
 
     async def disconnect(self):
         self.connected = False
+        self.room_code = None
+        self.player_role = None
+        self.match_started = False
+        self.inbox.clear()
         if not self.is_wasm and self._ws:
             await self._ws.close()
             if self._receive_task:
                 self._receive_task.cancel()
         elif self.is_wasm:
             try:
-                platform.window.eval("if (window.__pxi_socket) { window.__pxi_socket.close(); }")
+                platform.window.eval("if (window.__pxi_socket) { window.__pxi_socket.close(); } window.__pxi_inbox = [];")
             except Exception:
                 pass
         self._ws = None

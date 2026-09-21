@@ -2,69 +2,54 @@
 import asyncio
 import math
 import time
+import sys
 import pygame
 from src.theme import THEME
 
+IS_WASM = sys.platform in ("emscripten", "wasi")
+
 
 class TransitionManager:
-    """Handles screen fades and loading animations scaled to the active window."""
-
+    # Screen transitions, fade effects, and loading spinner
     def __init__(self, screen=None, width=None, height=None):
+        self.width = 1280
+        self.height = 720
+        self.scale = 1.0
         self.screen = screen or pygame.display.get_surface()
-        if self.screen:
-            sw, sh = self.screen.get_size()
-            self.width = width or sw
-            self.height = height or sh
-        else:
-            self.width = width or 1280
-            self.height = height or 720
 
-        self.scale = self.height / 720.0
         self.bg_color = THEME["bg_dark"]
 
-        # Overlay surface for screen fades
+        # Reusable dark overlay for alpha fades
         self.overlay = pygame.Surface((self.width, self.height))
         self.overlay.fill(self.bg_color)
         self._init_fonts()
 
     def _init_fonts(self):
-        """Scales loading screen font sizes to window resolution."""
-        self.scale = self.height / 720.0
-        title_size = max(18, int(28 * self.scale))
-        sub_size = max(12, int(18 * self.scale))
-        self.font_title = pygame.font.SysFont("Arial", title_size, bold=True)
-        self.font_sub = pygame.font.SysFont("Arial", sub_size)
+        self.font_title = pygame.font.SysFont("Arial", 28, bold=True)
+        self.font_sub = pygame.font.SysFont("Arial", 18)
 
     def _get_active_screen(self):
-        """Checks if the window resolution changed and updates overlay surfaces."""
         current_screen = pygame.display.get_surface()
         if current_screen:
             self.screen = current_screen
-            cw, ch = self.screen.get_size()
-            if cw != self.width or ch != self.height:
-                self.width = cw
-                self.height = ch
-                self.overlay = pygame.Surface((self.width, self.height))
-                self.overlay.fill(self.bg_color)
-                self._init_fonts()
         return self.screen
 
-    async def fade_out(self, duration=0.35):
-        """Fades current screen to black."""
+    async def fade_out(self, draw_current_fn=None, duration=0.2):
+        # Fade the current screen to dark background
         screen = self._get_active_screen()
         if not screen or duration <= 0:
             return
 
-        snapshot = screen.copy()
         start_time = time.perf_counter()
-
         while True:
+            pygame.event.pump()
             elapsed = time.perf_counter() - start_time
             progress = min(1.0, elapsed / duration)
             alpha = int(progress * 255)
 
+            if draw_current_fn:
+                draw_current_fn(execute_flip=False)
             self.overlay.set_alpha(alpha)
-            screen.blit(snapshot, (0, 0))
             screen.blit(self.overlay, (0, 0))
             pygame.display.flip()
 
@@ -72,23 +57,27 @@ class TransitionManager:
                 break
             await asyncio.sleep(0)
 
-    async def fade_between_surfaces(self, surf_before, surf_after, duration=0.55):
-        """Fades from an outgoing surface into an incoming surface."""
+    async def fade_transition(self, draw_outgoing_fn, draw_incoming_fn, duration=0.25):
+        # Cross-fade between two screens
         screen = self._get_active_screen()
         if not screen or duration <= 0:
+            if draw_incoming_fn:
+                draw_incoming_fn(execute_flip=True)
             return
 
         half_duration = duration / 2.0
 
-        # Phase 1: Fade out
+        # Phase 1: Fade out old screen
         start_time = time.perf_counter()
         while True:
+            pygame.event.pump()
             elapsed = time.perf_counter() - start_time
             progress = min(1.0, elapsed / half_duration)
             alpha = int(progress * 255)
 
+            if draw_outgoing_fn:
+                draw_outgoing_fn(execute_flip=False)
             self.overlay.set_alpha(alpha)
-            screen.blit(surf_before, (0, 0))
             screen.blit(self.overlay, (0, 0))
             pygame.display.flip()
 
@@ -96,15 +85,17 @@ class TransitionManager:
                 break
             await asyncio.sleep(0)
 
-        # Phase 2: Fade in
+        # Phase 2: Fade in new screen
         start_time = time.perf_counter()
         while True:
+            pygame.event.pump()
             elapsed = time.perf_counter() - start_time
             progress = min(1.0, elapsed / half_duration)
             alpha = int((1.0 - progress) * 255)
 
+            if draw_incoming_fn:
+                draw_incoming_fn(execute_flip=False)
             self.overlay.set_alpha(alpha)
-            screen.blit(surf_after, (0, 0))
             screen.blit(self.overlay, (0, 0))
             pygame.display.flip()
 
@@ -112,8 +103,8 @@ class TransitionManager:
                 break
             await asyncio.sleep(0)
 
-    async def show_loading(self, title="ENTERING PITCH...", subtitle="Synchronizing match physics", min_duration=0.6):
-        """Displays a circular loading spinner and centered status text."""
+    async def show_loading(self, title="ENTERING PITCH...", subtitle="Setting up match", min_duration=0.45):
+        # Animated loading spinner with status text
         screen = self._get_active_screen()
         if not screen:
             return
@@ -124,13 +115,14 @@ class TransitionManager:
         cy = self.height // 2 - int(25 * self.scale)
 
         while True:
+            pygame.event.pump()
             elapsed = time.perf_counter() - start_time
             if elapsed >= min_duration:
                 break
 
             screen.fill(self.bg_color)
 
-            # Circular animated spinner
+            # Draw rotating spinner dots
             angle = (elapsed * 360 * 1.5) % 360
             for dot_idx in range(6):
                 dot_angle = math.radians(angle + (dot_idx * 25))
