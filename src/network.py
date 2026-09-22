@@ -21,7 +21,7 @@ else:
 class NetworkClient:
     # Handles WebSocket connection for online multiplayer and cloud authentication
 
-    def __init__(self, server_uri="ws://152.67.155.250:8765"):
+    def __init__(self, server_uri="wss://pocketxi.duckdns.org"):
         self.server_uri = server_uri
         self.is_wasm = IS_WASM
 
@@ -64,15 +64,34 @@ class NetworkClient:
                     "window.__pxi_inbox = window.__pxi_inbox || [];"
                     "window.__pxi_status = 'connecting';"
                     "window.__pxi_error = '';"
-                    f"try {{ window.__pxi_socket = new WebSocket('{self.server_uri}'); }} "
-                    "catch(e) { window.__pxi_status = 'error'; window.__pxi_error = e.message; }"
-                    "window.__pxi_socket.onopen = function() { window.__pxi_status = 'connected'; };"
-                    "window.__pxi_socket.onmessage = function(e) { window.__pxi_inbox.push(e.data); };"
-                    "window.__pxi_socket.onerror = function(e) { window.__pxi_status = 'error'; window.__pxi_error = 'Handshake failed'; };"
-                    "window.__pxi_socket.onclose = function(e) { "
-                    "  window.__pxi_status = 'closed'; "
-                    "  window.__pxi_error = 'Closed (code ' + e.code + (e.reason ? ': ' + e.reason : '') + ')'; "
-                    "};"
+                    f"var serverUri = '{self.server_uri}';"
+                    "if (window.location && window.location.protocol === 'https:' && serverUri.startsWith('ws://')) {"
+                    "  serverUri = 'wss://' + serverUri.slice(5);"
+                    "}"
+                    "try {"
+                    "  window.__pxi_socket = new WebSocket(serverUri);"
+                    "  window.__pxi_socket.onopen = function() { window.__pxi_status = 'connected'; };"
+                    "  window.__pxi_socket.onmessage = function(e) { window.__pxi_inbox.push(e.data); };"
+                    "  window.__pxi_socket.onerror = function(e) {"
+                    "    window.__pxi_status = 'error';"
+                    "    if (window.location && window.location.protocol === 'https:' && serverUri.startsWith('ws://')) {"
+                    "      window.__pxi_error = 'Mixed Content: HTTPS pages require wss:// (Secure WebSocket).';"
+                    "    } else {"
+                    "      window.__pxi_error = 'WebSocket connection failed.';"
+                    "    }"
+                    "  };"
+                    "  window.__pxi_socket.onclose = function(e) {"
+                    "    window.__pxi_status = 'closed';"
+                    "    window.__pxi_error = 'Closed (code ' + e.code + (e.reason ? ': ' + e.reason : '') + ')';"
+                    "  };"
+                    "} catch(e) {"
+                    "  window.__pxi_status = 'error';"
+                    "  if (window.location && window.location.protocol === 'https:' && serverUri.startsWith('ws://')) {"
+                    "    window.__pxi_error = 'Mixed Content: HTTPS requires wss://';"
+                    "  } else {"
+                    "    window.__pxi_error = (e.name ? e.name + ': ' : '') + (e.message || 'Cannot open WebSocket');"
+                    "  }"
+                    "}"
                 )
                 platform.window.eval(js_code)
 

@@ -17,7 +17,7 @@ pygame.mixer.pre_init(frequency=24000, size=-16, channels=2, buffer=2048)
 async def main():
     # Main application loop connecting menus and matches
     launcher_backend = GameLauncher()
-    network_client = NetworkClient("ws://152.67.155.250:8765")
+    network_client = NetworkClient("wss://pocketxi.duckdns.org")
     asyncio.create_task(network_client.connect())
     menu_system = MenuSystem(launcher_backend, network_client=network_client)
 
