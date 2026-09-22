@@ -6,6 +6,26 @@ A two-player local football game built in Python with Pygame, featuring encrypte
 
 Pocket XI is a top-down arcade football game where two players compete on a single screen. The game incorporates user account management with data being encrypted and stored locally, an AI system that adapts to player patterns, and a full physics engine for ball and player interactions.
 
+## Features
+
+- **Local Multiplayer** - Two players on one keyboard (WASD vs Arrow keys)
+- **Online Multiplayer** - Two players on two different sessions/devices play against each other
+- **Encrypted User Profiles** - Salted SHA-256 hashing and Fernet symmetric encryption for stored game data
+- **Adaptive AI** - FSM-based AI with heatmap positioning, pattern analysis, and heuristic difficulty scaling
+- **Physics Engine** - Ball friction, Magnus effect curve, collision detection, and momentum-based kicking
+- **Power Shot System** - Charge-based mechanic with stamina cost and visual particle feedback
+- **Stamina Management** - Sprint decay, recharge delay, and exhaustion mechanics
+- **Animated Sprites** - Frame-based walking animations with stride and bob effects
+- **Sound Design** - Procedural crowd chants, impact sounds, and ambient effects
+- **Stats Tracking** - Goals, shots, and possession time saved per user profile
+- **Transitions Between Screens** - Fade in/out transitions and loading menus
+- **Cloud-Hosted Database** - All user data is now hosted on the cloud.
+
+## Play Now!
+**MAKE SURE TO TURN OFF YOUR ADBLOCK WHEN PLAYING AS IT BLOCKS OUTGOING CONNECTIONS TO THE VPS**
+
+https://abeer-maheshwari.github.io/PocketXI-Dev/build/web/
+
 ## Screenshots
 
 ### Login Screen
@@ -27,21 +47,6 @@ Pocket XI is a top-down arcade football game where two players compete on a sing
 ### Gameplay & Match
 
 ![Gameplay](screenshots/gameplay.png)
-
-## Features
-
-- **Local Multiplayer** - Two players on one keyboard (WASD vs Arrow keys)
-- **Online Multiplayer** - Two players on two different sessions/devices play against each other
-- **Encrypted User Profiles** - Salted SHA-256 hashing and Fernet symmetric encryption for stored game data
-- **Adaptive AI** - FSM-based AI with heatmap positioning, pattern analysis, and heuristic difficulty scaling
-- **Physics Engine** - Ball friction, Magnus effect curve, collision detection, and momentum-based kicking
-- **Power Shot System** - Charge-based mechanic with stamina cost and visual particle feedback
-- **Stamina Management** - Sprint decay, recharge delay, and exhaustion mechanics
-- **Animated Sprites** - Frame-based walking animations with stride and bob effects
-- **Sound Design** - Procedural crowd chants, impact sounds, and ambient effects
-- **Stats Tracking** - Goals, shots, and possession time saved per user profile
-- **Transitions Between Screens** - Fade in/out transitions and loading menus
-- **Cloud-Hosted Database** - All user data is now hosted on the cloud.
 
 ## Requirements
 
