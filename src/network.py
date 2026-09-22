@@ -74,23 +74,21 @@ class NetworkClient:
                     "  window.__pxi_socket.onmessage = function(e) { window.__pxi_inbox.push(e.data); };"
                     "  window.__pxi_socket.onerror = function(e) {"
                     "    window.__pxi_status = 'error';"
-                    "    if (window.location && window.location.protocol === 'https:' && serverUri.startsWith('ws://')) {"
-                    "      window.__pxi_error = 'Mixed Content: HTTPS pages require wss:// (Secure WebSocket).';"
-                    "    } else {"
-                    "      window.__pxi_error = 'WebSocket connection failed.';"
-                    "    }"
+                    "    window.__pxi_error = 'Connection blocked. Please disable Adblock / Brave Shields for online play.';"
                     "  };"
                     "  window.__pxi_socket.onclose = function(e) {"
                     "    window.__pxi_status = 'closed';"
-                    "    window.__pxi_error = 'Closed (code ' + e.code + (e.reason ? ': ' + e.reason : '') + ')';"
+                    "    if (e.code === 1006) {"
+                    "      window.__pxi_error = 'Connection blocked (Code 1006). Please disable Adblock / Brave Shields.';"
+                    "    } else if (e.code === 1000) {"
+                    "      window.__pxi_error = 'Connection closed normally.';"
+                    "    } else {"
+                    "      window.__pxi_error = 'Closed (code ' + e.code + (e.reason ? ': ' + e.reason : '') + '). Check Adblock settings.';"
+                    "    }"
                     "  };"
                     "} catch(e) {"
                     "  window.__pxi_status = 'error';"
-                    "  if (window.location && window.location.protocol === 'https:' && serverUri.startsWith('ws://')) {"
-                    "    window.__pxi_error = 'Mixed Content: HTTPS requires wss://';"
-                    "  } else {"
-                    "    window.__pxi_error = (e.name ? e.name + ': ' : '') + (e.message || 'Cannot open WebSocket');"
-                    "  }"
+                    "  window.__pxi_error = 'Connection blocked. Please disable Adblock / Brave Shields for online play.';"
                     "}"
                 )
                 platform.window.eval(js_code)
@@ -103,16 +101,17 @@ class NetworkClient:
                         self.connected = True
                         return True
                     elif status in ("error", "closed") or ready_state in (2, 3):
-                        self.error_message = str(platform.window.eval("window.__pxi_error || 'Connection closed'"))
+                        raw_err = str(platform.window.eval("window.__pxi_error || ''"))
+                        self.error_message = raw_err or "Connection blocked (Code 1006). Please disable Adblock."
                         return False
 
                     await asyncio.sleep(0.1)
 
-                self.error_message = "Connection timed out."
+                self.error_message = "Connection timed out. Check internet / Adblock settings."
                 return False
 
             except Exception as e:
-                self.error_message = f"WASM Socket failed: {e}"
+                self.error_message = f"Socket error: {e}"
                 return False
 
     async def auth_register(self, username, password):
