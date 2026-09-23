@@ -294,6 +294,17 @@ class MatchController:
                         self.player2.is_charging = payload.get("charge", False)
 
                     elif not is_host and p_type == "HOST_STATE":
+                        new_p1_score = payload["scores"][0]
+                        new_p2_score = payload["scores"][1]
+                        if new_p1_score > self.p1_score:
+                            self.particle_system.spawn_explosion(self.ball.pos.x, self.ball.pos.y, THEME["team_home"], count=50)
+                            if self.sound_manager:
+                                self.sound_manager.play_sfx("whistle")
+                        elif new_p2_score > self.p2_score:
+                            self.particle_system.spawn_explosion(self.ball.pos.x, self.ball.pos.y, THEME["team_away"], count=50)
+                            if self.sound_manager:
+                                self.sound_manager.play_sfx("whistle")
+
                         self.ball.pos = pygame.Vector2(payload["ball_pos"][0], payload["ball_pos"][1])
                         self.ball.vel = pygame.Vector2(payload["ball_vel"][0], payload["ball_vel"][1])
                         self.player1.pos = pygame.Vector2(payload["p1_pos"][0], payload["p1_pos"][1])
@@ -302,8 +313,8 @@ class MatchController:
                             target_p2 = pygame.Vector2(payload["p2_pos"][0], payload["p2_pos"][1])
                             if (self.player2.pos - target_p2).length() > self.s(40):
                                 self.player2.pos = target_p2
-                        self.p1_score = payload["scores"][0]
-                        self.p2_score = payload["scores"][1]
+                        self.p1_score = new_p1_score
+                        self.p2_score = new_p2_score
                         self.match_time_elapsed = payload["time"]
                         if payload.get("game_over", False) and not self.is_game_over:
                             self.is_game_over = True
@@ -357,6 +368,8 @@ class MatchController:
                 self.player2.handleInput()
                 self.player2.updatePosition(self.dt)
                 self.player1.updatePosition(self.dt)
+                if self.ball.vel.length() > 0:
+                    self.ball.applyPhysics(self.dt)
                 self.physics_engine.resolveBoundaryCollision(self.player2)
 
                 await self.network_client.send_relay({

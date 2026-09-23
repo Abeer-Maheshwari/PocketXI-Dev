@@ -99,19 +99,23 @@ async def handle_create_room(ws):
     code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
     ROOMS[code] = {"p1": ws, "p2": None}
     await ws.send(json.dumps({"status": "room_created", "room": code, "role": "p1"}))
+    return code
 
 async def handle_join_room(ws, room_code):
     room = ROOMS.get(room_code)
     if not room:
-        return await ws.send(json.dumps({"status": "error", "message": "Room not found"}))
+        await ws.send(json.dumps({"status": "error", "message": "Room not found"}))
+        return None
     if room["p2"] is not None:
-        return await ws.send(json.dumps({"status": "error", "message": "Room is full"}))
+        await ws.send(json.dumps({"status": "error", "message": "Room is full"}))
+        return None
 
     room["p2"] = ws
     await ws.send(json.dumps({"status": "join_success", "room": room_code, "role": "p2"}))
     start_pkt = json.dumps({"status": "match_start", "room": room_code})
     await room["p1"].send(start_pkt)
     await room["p2"].send(start_pkt)
+    return room_code
 
 # Compatible with both handler(ws) and handler(ws, path) across all websockets versions
 async def handler(ws, *args):
@@ -128,13 +132,21 @@ async def handler(ws, *args):
             elif action == "save_stats":
                 await handle_save_stats(ws, data)
             elif action == "create":
-                await handle_create_room(ws)
+                current_room = await handle_create_room(ws)
             elif action == "join":
-                current_room = data.get("room")
-                await handle_join_room(ws, current_room)
+                req_room = data.get("room")
+                res_room = await handle_join_room(ws, req_room)
+                if res_room:
+                    current_room = res_room
             elif action == "relay":
                 room_code = data.get("room") or current_room
-                if room_code in ROOMS:
+                if not room_code:
+                    for r_code, r_data in ROOMS.items():
+                        if ws in (r_data["p1"], r_data["p2"]):
+                            room_code = r_code
+                            current_room = r_code
+                            break
+                if room_code and room_code in ROOMS:
                     room = ROOMS[room_code]
                     target = room["p2"] if ws == room["p1"] else room["p1"]
                     if target:

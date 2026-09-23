@@ -167,7 +167,7 @@ class NetworkClient:
 
     async def send_relay(self, payload):
         if self.connected and self.room_code:
-            await self._send({"action": "relay", "payload": payload})
+            await self._send({"action": "relay", "room": self.room_code, "payload": payload})
 
     def _handle_incoming_packet(self, data):
         status = data.get("status")
